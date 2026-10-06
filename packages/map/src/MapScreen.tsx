@@ -99,7 +99,7 @@ export function MapScreen() {
     const lats = points.map((p) => p[1]);
     setFollow(false);
     camera.current?.fitBounds([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)], {
-      padding: { top: 140, right: 60, bottom: BOTTOM_PADDING + 40, left: 60 },
+      padding: { top: 190, right: 110, bottom: BOTTOM_PADDING + 60, left: 90 },
       pitch: 0,
       bearing: 0,
       duration: 700,
