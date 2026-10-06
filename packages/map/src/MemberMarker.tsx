@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Image, StyleSheet, View } from "react-native";
-import { Text, colors, crewStyle, fonts, useAvatarUrl } from "@rdv/core";
+import { PulseDot, Text, colors, crewStyle, useAvatarUrl } from "@rdv/core";
 
 interface Props {
   handle: string;
@@ -47,7 +47,7 @@ function MemberMarkerBase({ handle, avatarPath, styleIndex, stale }: Props) {
         </View>
       </View>
       <View style={styles.label}>
-        <Text variant="caption" bold numberOfLines={1} style={{ fontFamily: fonts.semibold }}>{handle}</Text>
+        <Text variant="caption" numberOfLines={1} style={{ color: colors.text }}>{handle}</Text>
       </View>
     </View>
   );
@@ -55,12 +55,20 @@ function MemberMarkerBase({ handle, avatarPath, styleIndex, stale }: Props) {
 
 export const MemberMarker = memo(MemberMarkerBase);
 
-// The person's own position: an accent arrow, the one accent colour on the map. It points up while the map follows them.
+// The person's own position: the one accent mark on the map. A dot with a soft halo, or an arrow while the map follows them.
 export function SelfMarker({ following }: { following: boolean }) {
   return (
     <View style={styles.selfWrap}>
-      <View style={styles.selfGlow} />
-      {following ? <View style={styles.arrow} /> : <View style={styles.dot} />}
+      {following ? (
+        <>
+          <PulseDot size={1} halo={44} />
+          <View style={styles.arrowWrap}>
+            <View style={styles.arrow} />
+          </View>
+        </>
+      ) : (
+        <PulseDot size={14} halo={3} />
+      )}
     </View>
   );
 }
@@ -70,12 +78,11 @@ const styles = StyleSheet.create({
   ring: { width: SIZE, height: SIZE, borderWidth: 3, alignItems: "center", justifyContent: "center", backgroundColor: colors.raised, overflow: "hidden" },
   photo: { width: SIZE - 8, height: SIZE - 8, borderRadius: (SIZE - 8) / 2 },
   initial: { alignItems: "center", justifyContent: "center", backgroundColor: colors.raised },
-  label: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: "rgba(10,10,11,0.85)", maxWidth: 110 },
+  label: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: "rgba(10,10,11,0.82)", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, maxWidth: 110 },
   selfWrap: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
-  selfGlow: { position: "absolute", width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, opacity: 0.22 },
+  arrowWrap: { position: "absolute", alignItems: "center", justifyContent: "center", width: 56, height: 56 },
   arrow: {
-    width: 0, height: 0, borderLeftWidth: 13, borderRightWidth: 13, borderBottomWidth: 30,
+    width: 0, height: 0, borderLeftWidth: 11, borderRightWidth: 11, borderBottomWidth: 26,
     borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: colors.accent,
   },
-  dot: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.accent, borderWidth: 3, borderColor: "#fff" },
 });

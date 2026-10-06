@@ -165,7 +165,8 @@ describe("signed in", () => {
     expect(await screen.findByText("Top speed")).toBeTruthy();
     expect(await screen.findByText("@mate")).toBeTruthy();
     expect(screen.getByText(/^184/)).toBeTruthy();
-    expect(screen.getByText(/@tester\s+\(you\)/)).toBeTruthy();
+    expect(screen.getByText("@tester")).toBeTruthy();
+    expect(screen.getByText("You")).toBeTruthy();
     expect(screen.getByText(/Resets Monday/)).toBeTruthy();
     expect(screen.getByText(/obey all laws/i)).toBeTruthy();
   });

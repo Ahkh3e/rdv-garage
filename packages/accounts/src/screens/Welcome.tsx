@@ -33,25 +33,31 @@ export function Welcome({ navigation }: { navigation: any }) {
 
   return (
     <Screen>
-      <View style={{ flex: 1, justifyContent: "center", gap: 28, paddingVertical: 40 }}>
-        <View style={{ gap: 10 }}>
-          <Text variant="label" color={colors.accent}>Invite only</Text>
-          <Text variant="large" style={{ fontSize: 40, lineHeight: 44 }}>RDV{"\n"}Garage</Text>
-          <Text muted>Private crews. One live map. Built for the Toronto car scene.</Text>
+      <View style={{ flex: 1, justifyContent: "space-between", paddingTop: 40, paddingBottom: 8 }}>
+        <View style={{ gap: 32 }}>
+          <Text variant="label" color={colors.muted} style={{ letterSpacing: 2.4 }}>RDV Garage</Text>
+          <View style={{ gap: 20 }}>
+            <View style={{ width: 32, height: 1, backgroundColor: colors.accent }} />
+            <Text variant="hero">Your crew,{"\n"}live.</Text>
+            <Text variant="hero" color={colors.subtle}>By invitation.</Text>
+          </View>
+          <Text muted style={{ maxWidth: 300 }}>Private crews and one live map, built for the Toronto car scene.</Text>
         </View>
-        {notice === "suspended" ? <Banner tone="error" text="This account has been suspended." /> : null}
-        {notice === "deleted" ? <Banner text="That account no longer exists." /> : null}
-        {invite ? <Banner text="Invite found. Create your account to join." /> : null}
-        <View style={{ gap: 12 }}>
-          {invite ? (
-            <Button title="Create account" testID="welcome-create" onPress={() => navigation.navigate("CreateAccount", { code: invite })} />
-          ) : (
-            <Button title="I have an invite" testID="welcome-invite" onPress={() => navigation.navigate("EnterInvite")} />
-          )}
-          <Button title="Sign in" variant="secondary" testID="welcome-signin" onPress={() => navigation.navigate("SignIn")} />
+        <View style={{ gap: 16 }}>
+          {notice === "suspended" ? <Banner tone="error" text="This account has been suspended." /> : null}
+          {notice === "deleted" ? <Banner text="That account no longer exists." /> : null}
+          {invite ? <Banner text="Invite found. Create your account to join." /> : null}
+          <View style={{ gap: 8 }}>
+            {invite ? (
+              <Button title="Create account" testID="welcome-create" onPress={() => navigation.navigate("CreateAccount", { code: invite })} />
+            ) : (
+              <Button title="I have an invite" testID="welcome-invite" onPress={() => navigation.navigate("EnterInvite")} />
+            )}
+            <Button title="Sign in" variant="ghost" testID="welcome-signin" onPress={() => navigation.navigate("SignIn")} />
+          </View>
+          <Disclaimer />
         </View>
       </View>
-      <Disclaimer />
     </Screen>
   );
 }

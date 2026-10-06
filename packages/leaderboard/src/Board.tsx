@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { Avatar, Card, Disclaimer, Empty, Screen, Text, colors, crewStyle, formatDaySet, messageFor, radii, useCrewState, useSession, useShell } from "@rdv/core";
+import { Avatar, Card, Disclaimer, Empty, Screen, Text, colors, crewStyle, messageFor, radii, useCrewState, useSession, useShell } from "@rdv/core";
 import { Pressable } from "react-native";
 
 interface Row {
@@ -55,6 +55,9 @@ export function Board() {
 
   const selected = crews.find((c) => c.id === crewId);
 
+  const podium = (rows ?? []).slice(0, 3);
+  const rest = (rows ?? []).slice(3);
+
   return (
     <Screen
       refreshing={refreshing}
@@ -63,15 +66,16 @@ export function Board() {
         await load();
         setRefreshing(false);
       }}
-      footer={<View style={{ padding: 16 }}><Disclaimer /></View>}
+      footer={<View style={{ paddingHorizontal: 20, paddingBottom: 96 }}><Disclaimer /></View>}
     >
-      <View>
+      <View style={{ gap: 4 }}>
         <Text variant="large">Top speed</Text>
-        <Text muted>This week · Resets Monday</Text>
+        <Text variant="body" muted>This week</Text>
+        <Text variant="caption" color={colors.subtle}>Resets Monday</Text>
       </View>
 
       {crews.length === 0 ? (
-        <Empty icon="trophy-outline" title="No crew on" body="Switch on a crew in Crews to see its board." />
+        <Empty overline="Board" title="No crew on" body="Switch on a crew in Crews to see its board." />
       ) : (
         <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, alignItems: "flex-start" }}>
@@ -79,32 +83,57 @@ export function Board() {
               const on = crew.id === crewId;
               const style = crewStyle(crew.styleIndex);
               return (
-                <Pressable key={crew.id} testID={`board-crew-${crew.name}`} accessibilityRole="button" onPress={() => setCrewId(crew.id)} style={[styles.pill, on && { borderColor: style.tint, backgroundColor: colors.raised }]}>
+                <Pressable key={crew.id} testID={`board-crew-${crew.name}`} accessibilityRole="button" onPress={() => setCrewId(crew.id)} style={[styles.pill, on && { borderColor: colors.border, backgroundColor: "rgba(255,255,255,0.12)" }]}>
                   <View style={[styles.dot, { backgroundColor: style.tint }]} />
-                  <Text variant="body" bold={on}>{crew.name}</Text>
+                  <Text variant="caption" color={on ? colors.text : colors.muted}>{crew.name}</Text>
                 </Pressable>
               );
             })}
           </ScrollView>
           {error ? <Text color={colors.danger}>{error}</Text> : null}
           {rows && rows.length === 0 ? (
-            <Empty icon="speedometer-outline" title="No sessions this week" body="Go live to get on the board." />
+            <Empty overline="This week" title="No sessions this week" body="Go live to get on the board." />
           ) : (
-            <Card>
-              {(rows ?? []).map((row, i) => (
-                <View key={row.user_id} testID={`board-row-${row.handle}`} style={[styles.row, i > 0 && styles.divider, row.user_id === me && { backgroundColor: colors.raised }]}>
-                  <Text variant="mono" style={styles.rank} muted={row.rank > 1} color={row.rank === 1 ? colors.accent : undefined}>{row.rank}</Text>
-                  <Avatar handle={row.handle} path={row.avatar_path} size={40} />
-                  <View style={{ flex: 1 }}>
-                    <Text numberOfLines={1}>@{row.handle}{row.user_id === me ? "  (you)" : ""}</Text>
-                    <Text variant="caption" muted>{formatDaySet(row.set_on)}</Text>
-                  </View>
-                  <Text variant="mono" style={{ fontSize: 20 }}>{Math.round(row.top_speed_kmh)}<Text variant="caption" muted> km/h</Text></Text>
+            <>
+              {podium.length > 0 ? (
+                <View style={styles.podium}>
+                  {[podium[1], podium[0], podium[2]].map((row, slot) => {
+                    if (!row) return <View key={slot} style={{ flex: 1 }} />;
+                    const first = row.rank === 1;
+                    return (
+                      <View key={row.user_id} testID={`board-row-${row.handle}`} style={[styles.podiumCol, first && { flex: 1.25 }]}>
+                        <Text variant="label" color={colors.subtle}>{row.rank}</Text>
+                        <Avatar handle={row.handle} path={row.avatar_path} size={first ? 64 : 48} />
+                        <Text variant={first ? "numeralXL" : "numeral"} style={first ? undefined : { fontSize: 32, lineHeight: 32 }}>{Math.round(row.top_speed_kmh)}</Text>
+                        <Text variant="caption" color={colors.subtle}>km/h</Text>
+                        {first ? <View style={styles.bar} /> : null}
+                        <Text variant="headline" numberOfLines={1} style={{ fontSize: 15, maxWidth: 96, textAlign: "center" }}>@{row.handle}</Text>
+                        {row.user_id === me ? <Text variant="caption" muted>You</Text> : null}
+                      </View>
+                    );
+                  })}
                 </View>
-              ))}
-            </Card>
+              ) : null}
+              {rest.length > 0 ? (
+                <Card>
+                  {rest.map((row, i) => (
+                    <View key={row.user_id} testID={`board-row-${row.handle}`} style={[styles.row, i > 0 && styles.divider, row.user_id === me && { backgroundColor: colors.raised }]}>
+                      {row.user_id === me ? <View style={styles.meBar} /> : null}
+                      <Text variant="numeral" style={styles.rank} color={colors.subtle}>{row.rank}</Text>
+                      <Avatar handle={row.handle} path={row.avatar_path} size={36} />
+                      <View style={{ flex: 1, flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+                        <Text variant="headline" numberOfLines={1} style={{ flexShrink: 1 }}>@{row.handle}</Text>
+                        {row.user_id === me ? <Text variant="caption" muted>You</Text> : null}
+                      </View>
+                      <Text variant="numeral">{Math.round(row.top_speed_kmh)}</Text>
+                      <Text variant="caption" color={colors.subtle} style={styles.unit}>km/h</Text>
+                    </View>
+                  ))}
+                </Card>
+              ) : null}
+            </>
           )}
-          {selected ? <Text variant="caption" muted>Speeds are measured by each person's phone and shown for sessions shared with {selected.name}.</Text> : null}
+          {selected ? <Text variant="caption" color={colors.subtle}>Speeds are measured by each person's phone and shown for sessions shared with {selected.name}.</Text> : null}
         </>
       )}
     </Screen>
@@ -112,9 +141,14 @@ export function Board() {
 }
 
 const styles = StyleSheet.create({
-  pill: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, minHeight: 40, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  rank: { width: 24, textAlign: "center" },
+  pill: { flexDirection: "row", alignItems: "center", gap: 8, height: 32, paddingHorizontal: 12, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.hairline, backgroundColor: "rgba(255,255,255,0.05)" },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  podium: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingVertical: 20, paddingHorizontal: 12, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.s1 },
+  podiumCol: { flex: 1, alignItems: "center", gap: 6 },
+  bar: { width: 24, height: 2, borderRadius: 1, backgroundColor: colors.accent },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, minHeight: 56 },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
+  meBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 2, backgroundColor: colors.accent },
+  rank: { width: 24, fontSize: 15 },
+  unit: { width: 32 },
 });

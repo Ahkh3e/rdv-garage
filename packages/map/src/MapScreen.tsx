@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, Map, ViewAnnotation, type CameraRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Chip, Slot, Text, colors, crewStyle, radii, useCrewState, usePositions, useSession } from "@rdv/core";
+import { Avatar, Glass, GlassButton, Slot, Text, colors, crewStyle, radii, useCrewState, usePositions, useSession } from "@rdv/core";
 import { MemberMarker, SelfMarker } from "./MemberMarker";
 import { FLAT_PITCH, FOLLOW_CAMERA, rdvNightStyle, rdvNightStyleFlat } from "./style";
 
@@ -203,6 +204,7 @@ export function MapScreen() {
           mapStyle={view3d ? rdvNightStyle : rdvNightStyleFlat}
           compass={false}
           logo={false}
+          tintColor={colors.subtle}
           attribution
           attributionPosition={{ bottom: SHEET_OVERLAP + 6, left: 8 }}
           onRegionDidChange={(event) => {
@@ -229,7 +231,10 @@ export function MapScreen() {
 
         <View style={styles.top} pointerEvents="box-none">
           <Pressable testID="map-show-everyone" accessibilityRole="button" accessibilityLabel="Show everyone live" onPress={showEveryone}>
-            <Chip label={live === 0 ? "No one else live" : `${live} live`} selected={live > 0} />
+            <Glass kind="control" style={styles.pill}>
+              <View style={[styles.pillDot, { backgroundColor: live > 0 ? colors.accent : colors.subtle }]} />
+              <Text variant="caption" color={live > 0 ? colors.text : colors.muted}>{live === 0 ? "No one else live" : `${live} live`}</Text>
+            </Glass>
           </Pressable>
         </View>
 
@@ -242,12 +247,20 @@ export function MapScreen() {
         <View style={[styles.controls, !expanded && { bottom: SHEET_OVERLAP + 12 }]} pointerEvents="box-none">
           {expanded ? (
             <>
-              <MapButton testID="map-zoom-in" label="Zoom in" icon="add" onPress={() => step(1)} />
-              <MapButton testID="map-zoom-out" label="Zoom out" icon="remove" onPress={() => step(-1)} />
+              <GlassButton testID="map-zoom-in" label="Zoom in" onPress={() => step(1)}>
+                <Feather name="plus" size={20} color={colors.text} />
+              </GlassButton>
+              <GlassButton testID="map-zoom-out" label="Zoom out" onPress={() => step(-1)}>
+                <Feather name="minus" size={20} color={colors.text} />
+              </GlassButton>
             </>
           ) : null}
-          <MapButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} text={view3d ? "2D" : "3D"} onPress={toggleView} />
-          <MapButton testID="map-recenter" label="Back to my location" icon="navigate" active={follow} onPress={rehome} />
+          <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} onPress={toggleView}>
+            <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
+          </GlassButton>
+          <GlassButton testID="map-recenter" label="Back to my location" onPress={rehome}>
+            <Feather name="navigation" size={19} color={follow ? colors.accent : colors.text} />
+          </GlassButton>
         </View>
 
         <View style={[StyleSheet.absoluteFill, { paddingBottom: SHEET_OVERLAP }]} pointerEvents="box-none">
@@ -255,13 +268,15 @@ export function MapScreen() {
         </View>
       </Animated.View>
 
-      <View style={styles.sheet}>
-        <Pressable testID="map-sheet-handle" accessibilityRole="button" accessibilityLabel={expanded ? "Show members" : "Show map"} onPress={() => setExpanded((v) => !v)} style={styles.handleHit}>
+      <Glass kind="sheet" style={styles.sheet}>
+        <Pressable testID="map-sheet-handle" accessibilityRole="button" accessibilityLabel={expanded ? "Show members" : "Show map"} onPress={() => { Haptics.selectionAsync().catch(() => undefined); setExpanded((v) => !v); }} style={styles.handleHit}>
           <View style={styles.handle} />
         </Pressable>
         <View style={styles.sheetHeader}>
           <Text variant="title">Crew</Text>
-          <Text variant="caption" muted>{members.length === 0 ? "No members on the map" : `${live} live · ${members.length} members`}</Text>
+          <Text variant="caption" muted>
+            {members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length} ${members.length === 1 ? "member" : "members"}`}
+          </Text>
         </View>
         <ScrollView
           testID="map-members"
@@ -273,9 +288,9 @@ export function MapScreen() {
           onScrollEndDrag={onListRelease}
         >
           {members.length === 0 && crewState.loaded ? (
-            <Text variant="caption" muted>{crewState.selected.length === 0 ? "Switch on a crew in Crews to see its members." : "Your crews have no other members yet."}</Text>
+            <Text variant="body" muted>{crewState.selected.length === 0 ? "Switch on a crew in Crews to see its members." : "Your crews have no other members yet."}</Text>
           ) : null}
-          {members.map((m) => {
+          {members.map((m, i) => {
             const tint = crewStyle(m.styleIndex).tint;
             const position = m.position;
             const fresh = position ? now - position.ts <= FADE_AFTER_MS : false;
@@ -286,53 +301,51 @@ export function MapScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={position ? `Show ${m.handle} on the map` : `${m.handle} is not live`}
                 disabled={!position}
-                onPress={() => position && jumpTo(position.lat, position.lng)}
-                style={[styles.member, !position && { opacity: 0.5 }]}
+                onPress={() => {
+                  if (!position) return;
+                  Haptics.selectionAsync().catch(() => undefined);
+                  jumpTo(position.lat, position.lng);
+                }}
+                style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }, !position && { opacity: 0.55 }]}
               >
                 <Avatar handle={m.handle} path={m.avatarPath} size={40} ring={tint} />
                 <View style={{ flex: 1 }}>
-                  <Text variant="body" bold numberOfLines={1}>@{m.handle}</Text>
-                  <Text variant="caption" muted numberOfLines={1}>{m.crewNames.join(", ")}</Text>
+                  <Text variant="headline" numberOfLines={1}>@{m.handle}</Text>
+                  <Text variant="caption" color={colors.muted} numberOfLines={1}>{m.crewNames.join(", ")}</Text>
                 </View>
                 {position ? (
                   <View style={styles.status}>
-                    <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accent : colors.muted }]} />
-                    <Text variant="caption">{fresh ? "Live" : "Idle"}</Text>
+                    <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accent : colors.subtle }]} />
+                    <Text variant="caption" color={fresh ? colors.text : colors.subtle}>{fresh ? "Live" : "Idle"}</Text>
                   </View>
                 ) : (
-                  <Text variant="caption" muted>Offline</Text>
+                  <Text variant="caption" color={colors.subtle}>Offline</Text>
                 )}
               </Pressable>
             );
           })}
         </ScrollView>
-      </View>
+      </Glass>
     </View>
-  );
-}
-
-function MapButton({ icon, text, label, onPress, testID, active }: { icon?: "add" | "remove" | "navigate"; text?: string; label: string; onPress: () => void; testID: string; active?: boolean }) {
-  return (
-    <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={[styles.button, active && { borderColor: colors.accent }]}>
-      {icon ? <Ionicons name={icon} size={22} color={active ? colors.accent : colors.text} /> : <Text variant="caption" bold>{text}</Text>}
-    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   mapArea: { backgroundColor: colors.background },
-  top: { position: "absolute", top: 56, left: 16, right: 80, alignItems: "flex-start" },
-  notice: { position: "absolute", top: 100, left: 16, right: 16, padding: 12, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  controls: { position: "absolute", right: 16, bottom: SHEET_OVERLAP + 96, gap: 10 },
-  button: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
-  sheet: { flex: 1, marginTop: -SHEET_OVERLAP, backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderTopWidth: 1, borderColor: colors.border },
-  handleHit: { alignItems: "center", paddingTop: 8, paddingBottom: 6 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border },
+  top: { position: "absolute", top: 60, left: 16, right: 80, alignItems: "flex-start" },
+  pill: { flexDirection: "row", alignItems: "center", gap: 8, height: 32, paddingHorizontal: 12, borderRadius: radii.pill },
+  pillDot: { width: 6, height: 6, borderRadius: 3 },
+  notice: { position: "absolute", top: 104, left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
+  controls: { position: "absolute", right: 16, bottom: SHEET_OVERLAP + 96, gap: 12 },
+  sheet: { flex: 1, marginTop: -SHEET_OVERLAP, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, borderBottomWidth: 0 },
+  handleHit: { alignItems: "center", paddingTop: 8, paddingBottom: 8 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.28)" },
   sheetHeader: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 8 },
   list: { flex: 1 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
-  member: { flexDirection: "row", alignItems: "center", gap: 12, padding: 10, borderRadius: radii.md, backgroundColor: colors.raised, borderWidth: 1, borderColor: colors.border },
+  listContent: { paddingHorizontal: 8, paddingBottom: 96 },
+  member: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 12, borderRadius: radii.sm },
+  memberDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
   status: { flexDirection: "row", alignItems: "center", gap: 6 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
 });

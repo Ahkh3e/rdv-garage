@@ -18,7 +18,7 @@ import { parseLink } from "./links";
 import { createStore, useStore, type Store } from "./store";
 import { colors, fonts } from "./theme";
 import { Spinner } from "./ui/Bits";
-import { Glass } from "./ui/Glass";
+import { Glass, GlassButton } from "./ui/Glass";
 import { Text } from "./ui/Text";
 
 export interface ShellRuntime extends Shell {
@@ -298,14 +298,19 @@ function SignedInStack() {
   }, [shell]);
   return (
     <Stack.Navigator
-      screenOptions={{
+      screenOptions={({ navigation }) => ({
+        headerLeft: () => (
+          <GlassButton label="Back" onPress={() => navigation.goBack()}>
+            <Feather name="chevron-left" size={22} color={colors.text} />
+          </GlassButton>
+        ),
         contentStyle: { backgroundColor: colors.background },
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
-        headerTitleStyle: { fontFamily: fonts.semibold },
+        headerTitleStyle: { fontFamily: fonts.display, fontSize: 17 },
         headerShadowVisible: false,
         headerBackButtonDisplayMode: "minimal",
-      }}
+      })}
     >
       <Stack.Screen name="Tabs" component={TabsScreen} options={{ headerShown: false }} />
       {shell.routes.map((route) => (
