@@ -178,12 +178,9 @@ export function MapScreen() {
   const step = (delta: number) => {
     const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom.current + delta));
     zoom.current = next;
-    if (follow) {
-      followZoom.current = next;
-      if (me) easeToMe(me, 300);
-    } else {
-      camera.current?.zoomTo(next, { duration: 300 });
-    }
+    followZoom.current = next;
+    if (follow && me) easeToMe(me, 300);
+    else camera.current?.zoomTo(next, { duration: 300 });
   };
 
   const onListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -244,24 +241,22 @@ export function MapScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.controls, !expanded && { bottom: SHEET_OVERLAP + 12, flexDirection: "row" }]} pointerEvents="box-none">
-          {expanded ? (
-            <>
-              <GlassButton testID="map-zoom-in" label="Zoom in" onPress={() => step(1)}>
-                <Feather name="plus" size={20} color={colors.text} />
-              </GlassButton>
-              <GlassButton testID="map-zoom-out" label="Zoom out" onPress={() => step(-1)}>
-                <Feather name="minus" size={20} color={colors.text} />
-              </GlassButton>
-            </>
-          ) : null}
-          <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} onPress={toggleView}>
-            <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
-          </GlassButton>
-          <GlassButton testID="map-recenter" label="Back to my location" onPress={rehome}>
-            <Feather name="navigation" size={19} color={follow ? colors.accent : colors.text} />
-          </GlassButton>
-        </View>
+                {expanded ? (
+          <View style={styles.controls} pointerEvents="box-none">
+            <GlassButton testID="map-zoom-in" label="Zoom in" onPress={() => step(1)}>
+              <Feather name="plus" size={20} color={colors.text} />
+            </GlassButton>
+            <GlassButton testID="map-zoom-out" label="Zoom out" onPress={() => step(-1)}>
+              <Feather name="minus" size={20} color={colors.text} />
+            </GlassButton>
+            <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} onPress={toggleView}>
+              <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
+            </GlassButton>
+            <GlassButton testID="map-recenter" label="Back to my location" onPress={rehome}>
+              <Feather name="navigation" size={19} color={follow ? colors.accent : colors.text} />
+            </GlassButton>
+          </View>
+        ) : null}
 
         <View style={[StyleSheet.absoluteFill, { paddingBottom: SHEET_OVERLAP }]} pointerEvents="box-none">
           <Slot name="map.overlay" />
@@ -274,9 +269,20 @@ export function MapScreen() {
         </Pressable>
         <View style={styles.sheetHeader}>
           <Text variant="title">Crew</Text>
-          <Text variant="caption" muted>
-            {members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length} ${members.length === 1 ? "member" : "members"}`}
-          </Text>
+          {expanded ? (
+            <Text variant="caption" muted>
+              {members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length} ${members.length === 1 ? "member" : "members"}`}
+            </Text>
+          ) : (
+            <View style={{ flexDirection: "row", gap: 8, alignSelf: "center" }}>
+              <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} size={36} onPress={toggleView}>
+                <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
+              </GlassButton>
+              <GlassButton testID="map-recenter" label="Back to my location" size={36} onPress={rehome}>
+                <Feather name="navigation" size={16} color={follow ? colors.accent : colors.text} />
+              </GlassButton>
+            </View>
+          )}
         </View>
         <ScrollView
           testID="map-members"
@@ -341,7 +347,7 @@ const styles = StyleSheet.create({
   sheet: { flex: 1, marginTop: -SHEET_OVERLAP, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, borderBottomWidth: 0 },
   handleHit: { alignItems: "center", paddingTop: 8, paddingBottom: 8 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.28)" },
-  sheetHeader: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 8 },
+  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 8, minHeight: 44 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 8, paddingBottom: 96 },
   member: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 12, borderRadius: radii.sm },

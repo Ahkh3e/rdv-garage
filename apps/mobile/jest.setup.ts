@@ -5,7 +5,7 @@ jest.mock("@maplibre/maplibre-react-native", () => {
   const { View } = require("react-native");
   const Map = (props: any) => React.createElement(View, { testID: props.testID ?? "map-view" }, props.children);
   const Camera = React.forwardRef((_props: any, ref: any) => {
-    React.useImperativeHandle(ref, () => ({ easeTo: jest.fn(), fitBounds: jest.fn(), flyTo: jest.fn(), jumpTo: jest.fn(), setStop: jest.fn() }));
+    React.useImperativeHandle(ref, () => ({ easeTo: jest.fn(), fitBounds: jest.fn(), zoomTo: jest.fn(), flyTo: jest.fn(), jumpTo: jest.fn(), setStop: jest.fn() }));
     return null;
   });
   const ViewAnnotation = (props: any) => React.createElement(View, { testID: `marker-${props.id}` }, props.children);
