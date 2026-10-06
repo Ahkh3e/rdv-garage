@@ -16,6 +16,8 @@ const config: ExpoConfig = {
     supportsTablet: false,
     bundleIdentifier: "app.rdvgarage.mobile",
     associatedDomains: [`applinks:${linkDomain}`],
+    // Needed so the secure store (keychain) works in simulator builds as well as device builds.
+    entitlements: { "keychain-access-groups": ["$(AppIdentifierPrefix)app.rdvgarage.mobile"] },
     infoPlist: {
       UIBackgroundModes: ["location"],
       NSLocationWhenInUseUsageDescription: "RDV Garage shows you on the map and follows you while you drive.",
