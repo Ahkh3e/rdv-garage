@@ -25,7 +25,7 @@ export const crews: Module = {
         loadCrews(shell).catch(() => undefined);
       } else if (state.status !== "signedIn") {
         loadedFor = null;
-        shell.crewContext.setCrews([]);
+        shell.crewContext.reset();
       }
     });
 

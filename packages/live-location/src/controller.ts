@@ -23,6 +23,8 @@ const REBROADCAST_CHECK_MS = 5000;
 export function createController(shell: Shell, hub: ChannelHub): LiveController {
   let run: Run | null = null;
   let starting = false;
+  // Bumped by every stop, so a Go live that is still starting can tell it was cancelled (sign out, suspension, delete).
+  let epoch = 0;
 
   const build = (userId: string): LiveEngine =>
     new LiveEngine({
@@ -30,8 +32,10 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
       now: () => Date.now(),
       weekOf: (ts) => torontoWeekStart(ts),
       startSession: (crewIds) => shell.backend.rpc<string>("live", "start_session", { p_crew_ids: crewIds, p_platform: Platform.OS }),
-      checkpoint: async (sessionId, speed, dist) =>
-        shell.backend.rpc<string>("live", "checkpoint_session", { p_session: sessionId, p_max_speed_kmh: speed, p_distance_m: dist }),
+      checkpoint: async (sessionId, speed, dist, weekStart) =>
+        shell.backend.rpc<string>("live", "checkpoint_session", {
+          p_session: sessionId, p_max_speed_kmh: speed, p_distance_m: dist, ...(weekStart ? { p_week_start: weekStart } : {}),
+        }),
       endSession: async (sessionId) => void (await shell.backend.rpc("live", "end_session", { p_session: sessionId })),
       broadcast: (crewId, event, payload) => hub.send(crewId, event, payload),
       publishSelf: (position) => {
@@ -42,6 +46,7 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
     });
 
   async function stop() {
+    epoch += 1;
     const current = run;
     if (!current) return;
     run = null;
@@ -63,19 +68,23 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
     const session = shell.session.get();
     if (session.status !== "signedIn" || run || starting) return "denied";
     starting = true;
+    const myEpoch = epoch;
+    const cancelled = () => myEpoch !== epoch || shell.session.get().status !== "signedIn";
     try {
       const permission = await ensureLocationPermission();
       if (permission !== "ok") return permission;
-      if (shell.session.get().status !== "signedIn") return "denied";
+      if (cancelled()) return "denied";
 
       const engine = build(session.userId);
       const releases = new Map<CrewId, () => void>(crewIds.map((id) => [id, hub.acquire(id)]));
       const current: Run = { engine, releases, timers: [] };
       try {
         const sessionId = await engine.start(crewIds);
+        if (cancelled()) throw new Error("cancelled");
         const names = shell.crewContext.store.get().crews.filter((c) => crewIds.includes(c.id)).map((c) => c.name);
         setFixSink((fix: Fix) => engine.onFix(fix));
         await startUpdates(names);
+        if (cancelled()) throw new Error("cancelled");
         current.timers.push(setInterval(() => void engine.maybeTick(Date.now()), TICK_MS));
         current.timers.push(setInterval(() => engine.rebroadcast(Date.now()), REBROADCAST_CHECK_MS));
         for (const crewId of crewIds) hub.track(crewId, { user_id: session.userId, handle: session.profile.handle });
@@ -90,6 +99,7 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
         await stopUpdates().catch(() => undefined);
         await engine.stop();
         releases.forEach((release) => release());
+        if (cancelled() && error instanceof Error && error.message === "cancelled") return "denied";
         throw error;
       }
     } finally {

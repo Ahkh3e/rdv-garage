@@ -46,7 +46,7 @@ const config: ExpoConfig = {
       {
         action: "VIEW",
         autoVerify: true,
-        data: [{ scheme: "https", host: linkDomain, pathPrefix: "/i/" }, { scheme: "https", host: linkDomain, pathPrefix: "/c/" }, { scheme: "https", host: linkDomain, pathPrefix: "/reset" }],
+        data: [{ scheme: "https", host: linkDomain, pathPrefix: "/i/" }, { scheme: "https", host: linkDomain, pathPrefix: "/c/" }, { scheme: "https", host: linkDomain, pathPrefix: "/reset" }, { scheme: "https", host: linkDomain, pathPrefix: "/confirm" }],
         category: ["BROWSABLE", "DEFAULT"],
       },
     ],

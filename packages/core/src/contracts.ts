@@ -90,6 +90,7 @@ export interface CrewContextState {
 export interface CrewContext {
   store: Store<CrewContextState>;
   setCrews(crews: Omit<CrewSummary, "styleIndex">[]): void;
+  reset(): void;
   select(ids: CrewId[]): void;
 }
 

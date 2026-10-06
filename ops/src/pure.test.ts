@@ -29,6 +29,20 @@ describe("audit", () => {
   });
 });
 
+import { loadConfig } from "./config";
+
+describe("config", () => {
+  const env = { SUPABASE_URL: "http://x", SUPABASE_SERVICE_ROLE_KEY: "k", SUPABASE_ANON_KEY: "a" };
+  it("requires a real project name in production", () => {
+    expect(() => loadConfig({ ...env, OPS_ENVIRONMENT: "production" } as never)).toThrow(/OPS_PROJECT_NAME/);
+    expect(loadConfig({ ...env, OPS_ENVIRONMENT: "production", OPS_PROJECT_NAME: "rdv-prod" } as never).projectName).toBe("rdv-prod");
+    expect(loadConfig({ ...env, OPS_ENVIRONMENT: "test" } as never).projectName).toBe("test");
+  });
+  it("rejects an unknown environment", () => {
+    expect(() => loadConfig({ ...env, OPS_ENVIRONMENT: "staging" } as never)).toThrow(/OPS_ENVIRONMENT/);
+  });
+});
+
 describe("production guard", () => {
   const never = async () => {
     throw new Error("should not ask");

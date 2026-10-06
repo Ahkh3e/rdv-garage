@@ -291,3 +291,28 @@ describe("leaderboard crew switching", () => {
     expect(screen.getByText("@bravodriver")).toBeTruthy();
   });
 });
+
+describe("sign out and cold start", () => {
+  it("clears the previous account's crews, live state, and positions on sign out", async () => {
+    const backend = makeBackend("user-1", { "accounts.my_profile": () => [profileRow()], "crews.list_my_crews": () => [crewsRow()] });
+    const shell = await mount(backend);
+    await screen.findByText("Night Cruisers");
+    shell.live.set({ live: true, sessionId: "s1", crewIds: ["crew-1"] });
+    shell.locationStream.publish({ userId: "user-2", crewIds: ["crew-1"], lat: 1, lng: 2, heading: null, ts: Date.now() });
+    await act(async () => backend.setUser(null));
+    expect(await screen.findByText("I have an invite")).toBeTruthy();
+    expect(shell.crewContext.store.get()).toEqual({ loaded: false, crews: [], selected: [] });
+    expect(shell.live.get()).toEqual({ live: false, sessionId: null, crewIds: [] });
+    expect(shell.locationStream.store.get()).toEqual({});
+  });
+
+  it("delivers a reset link opened at launch to the new password screen once the signed-in screens exist", async () => {
+    mockStore.set("rdv.reset.requested", String(Date.now()));
+    const backend = makeBackend(null, { "accounts.my_profile": () => [profileRow()], "crews.list_my_crews": () => [] });
+    (backend.auth.startRecovery as jest.Mock).mockImplementation(async () => backend.setUser("user-1"));
+    const shell = await mount(backend);
+    await screen.findByText("I have an invite");
+    await act(async () => shell.dispatchLink("rdvgarage://reset#access_token=a.b.c&refresh_token=r1&type=recovery"));
+    expect(await screen.findByText("Choose a new password")).toBeTruthy();
+  });
+});

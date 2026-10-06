@@ -22,7 +22,7 @@ export function startReceiver(shell: Shell, hub: ChannelHub, extraCrews: () => C
     // A broadcast carries no verified sender. Trust within a crew is by design, but at least ignore ids that are not
     // members of the crew the message arrived on, so one crew cannot move another crew's members.
     const crew = shell.crewContext.store.get().crews.find((c) => c.id === crewId);
-    if (crew && !crew.members.some((m) => m.userId === userId)) return;
+    if (!crew || !crew.members.some((m) => m.userId === userId)) return;
     if (event === "stop") {
       const crews = memberCrews.get(userId);
       crews?.delete(crewId);

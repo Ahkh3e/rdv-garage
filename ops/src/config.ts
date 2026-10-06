@@ -34,6 +34,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OpsConfig {
     if (!value) throw new Error(`Missing ${key}. See ops/README.md.`);
     return value;
   };
+  // The typed project name is the production confirmation, so it must be a real name and not just "production".
+  if (environment === "production" && !merged.OPS_PROJECT_NAME) throw new Error("OPS_PROJECT_NAME is required when OPS_ENVIRONMENT is production.");
   return {
     environment,
     projectName: merged.OPS_PROJECT_NAME ?? environment,

@@ -116,6 +116,36 @@ describe("live controller", () => {
     expect(t.live.get().live).toBe(false);
   });
 
+  it("does not start sharing if the person signs out while Go live is still starting", async () => {
+    const t = setup();
+    const c = createController(t.shell, t.hub);
+    let release!: () => void;
+    Location.getBackgroundPermissionsAsync.mockImplementationOnce(() => new Promise((r) => (release = () => r({ status: "granted" }))));
+    const pending = c.goLive(["a"]);
+    await new Promise((r) => setTimeout(r, 5));
+    t.session.set({ status: "signedOut" });
+    release();
+    expect(await pending).toBe("denied");
+    expect(t.live.get().live).toBe(false);
+    expect(Location.startLocationUpdatesAsync).not.toHaveBeenCalled();
+    expect(t.calls.filter((x) => x.name === "live.start_session").length).toBe(0);
+  });
+
+  it("ends a session that was started if the person is suspended before it finishes", async () => {
+    const t = setup();
+    const c = createController(t.shell, t.hub);
+    let release!: () => void;
+    Location.startLocationUpdatesAsync.mockImplementationOnce(() => new Promise<void>((r) => (release = r)));
+    const pending = c.goLive(["a"]);
+    await new Promise((r) => setTimeout(r, 5));
+    t.events.emit({ type: "account.suspended" });
+    release();
+    expect(await pending).toBe("denied");
+    expect(t.live.get().live).toBe(false);
+    expect(t.calls.some((x) => x.name === "live.end_session")).toBe(true);
+    expect(t.released).toEqual(["a"]);
+  });
+
   it("does not go live when the location permission is not granted", async () => {
     const t = setup();
     Location.getBackgroundPermissionsAsync.mockResolvedValueOnce({ status: "denied" });

@@ -25,6 +25,7 @@ export interface ShellRuntime extends Shell {
   slots: Map<string, { component: ComponentType; order: number }[]>;
   authFlow: ComponentType | null;
   navRef: ReturnType<typeof createNavigationContainerRef>;
+  flushNavigation(): void;
   dispatchLink(url: string): void;
   start(): () => void;
 }
@@ -36,6 +37,9 @@ function createCrewContext(events: ReturnType<typeof createEvents>): CrewContext
     setCrews(crews) {
       const withStyle: CrewSummary[] = crews.map((crew, index) => ({ ...crew, styleIndex: index }));
       store.set({ loaded: true, crews: withStyle, selected: withStyle.filter((c) => c.selected).map((c) => c.id) });
+    },
+    reset() {
+      store.set({ loaded: false, crews: [], selected: [] });
     },
     select(ids) {
       store.set((prev) => ({
@@ -111,6 +115,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
     slots: new Map(),
     authFlow: null,
     navRef,
+    flushNavigation: () => flush(),
     addTab: (tab) => void shell.tabs.push(tab),
     addRoute: (route) => void shell.routes.push(route),
     addFlag: (name, def) => void flags.set(name, config.flags[name] ?? def),
@@ -143,6 +148,8 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
             const prev = session.get();
             session.set({ status: "signedOut", notice: prev.status === "signedOut" ? prev.notice : undefined });
             shell.locationStream.clear();
+            shell.crewContext.reset();
+            shell.live.set({ live: false, sessionId: null, crewIds: [] });
             return;
           }
           try {
@@ -258,6 +265,11 @@ function TabsScreen() {
 
 function SignedInStack() {
   const shell = useShell();
+  // Queued navigations (a reset link opened at launch) are delivered once the signed-in screens exist.
+  useEffect(() => {
+    const timer = setTimeout(() => shell.flushNavigation(), 0);
+    return () => clearTimeout(timer);
+  }, [shell]);
   return (
     <Stack.Navigator
       screenOptions={{
@@ -298,7 +310,7 @@ export function ShellApp({ shell }: { shell: ShellRuntime }) {
       <SafeAreaProvider>
         <View style={styles.root}>
           <StatusBar barStyle="light-content" backgroundColor={Platform.OS === "android" ? colors.background : undefined} />
-          <NavigationContainer ref={shell.navRef} theme={navTheme} onReady={() => setReady(ready || true)}>
+          <NavigationContainer ref={shell.navRef} theme={navTheme} onReady={() => { setReady(true); shell.flushNavigation(); }}>
             {body}
           </NavigationContainer>
         </View>

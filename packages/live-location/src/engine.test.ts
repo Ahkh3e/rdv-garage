@@ -64,9 +64,13 @@ describe("LiveEngine", () => {
     advance(1000); engine.onFix(fix({ speedMs: 10, lat: 43.651, ts: advance(0) }));
     expect(engine.segment.maxKmh).toBeCloseTo(144);
     expect(engine.segment.distanceM).toBeGreaterThan(100);
-    await engine.maybeTick(advance(TICK_MS));
+    // Still driving: a fresh fix arrives before each tick.
+    advance(TICK_MS);
+    engine.onFix(fix({ speedMs: 10, lat: 43.6515, ts: advance(0) }));
     expect(log.checkpoints.length).toBe(0);
-    await engine.maybeTick(advance(TICK_MS));
+    advance(TICK_MS);
+    engine.onFix(fix({ speedMs: 10, lat: 43.652, ts: advance(0) }));
+    await Promise.resolve();
     expect(log.checkpoints.length).toBe(1);
     expect(log.checkpoints[0].speed).toBeCloseTo(144);
   });
@@ -140,6 +144,47 @@ describe("LiveEngine", () => {
   });
 });
 
+describe("LiveEngine: review fixes", () => {
+  it("treats a member as parked when fixes stop arriving, even if the last fix was fast", async () => {
+    const { engine, log, advance, fix } = setup();
+    await engine.start(["a"]);
+    engine.onFix(fix({ speedMs: 25 }));
+    expect(engine.isMoving).toBe(true);
+    advance(20000);
+    engine.rebroadcast(advance(0));
+    expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(2);
+    await engine.maybeTick(advance(TICK_MS));
+    expect(log.checkpoints.at(-1)).toEqual({ id: "s1", speed: null, dist: null });
+  });
+
+  it("writes the old week's final values to the old week before starting the new one from zero", async () => {
+    const calls: any[] = [];
+    const { engine, fix } = setup({
+      checkpoint: async (id, speed, dist, week) => {
+        calls.push({ id, speed, dist, week });
+        return "2025-10-13";
+      },
+    });
+    await engine.start(["a"]);
+    engine.onFix(fix({ speedMs: 50, ts: Date.parse("2025-10-13T03:59:50Z") }));
+    engine.onFix(fix({ speedMs: 10, ts: Date.parse("2025-10-13T04:00:05Z") }));
+    await Promise.resolve();
+    expect(calls[0].week).toBe("2025-10-06");
+    expect(calls[0].speed).toBeCloseTo(180);
+    expect(engine.segment.week).toBe("2025-10-13");
+    expect(engine.segment.maxKmh).toBeCloseTo(36);
+  });
+
+  it("ignores speed and distance from very imprecise fixes but still shows the position", async () => {
+    const { engine, log, fix, now } = setup();
+    await engine.start(["a"]);
+    engine.onFix(fix({ speedMs: 20, accuracy: 5 }));
+    engine.onFix(fix({ speedMs: 90, accuracy: 400, lat: 43.66, ts: now() + 1000 }));
+    expect(engine.segment.maxKmh).toBeCloseTo(72);
+    expect(log.self.length).toBe(2);
+  });
+});
+
 describe("LiveEngine: parked drivers, dropped crews, and races", () => {
   it("keeps broadcasting a parked member's last position on the stationary interval", async () => {
     const { engine, log, advance, fix } = setup();
@@ -161,7 +206,7 @@ describe("LiveEngine: parked drivers, dropped crews, and races", () => {
     const { engine, log, advance, fix } = setup();
     await engine.start(["a"]);
     engine.onFix(fix({ speedMs: 20 }));
-    advance(20000);
+    advance(4000);
     engine.rebroadcast(advance(0));
     expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(1);
     await engine.stop();

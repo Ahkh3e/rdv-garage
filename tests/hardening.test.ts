@@ -16,6 +16,22 @@ describe("review hardening", () => {
     expect(board[0]!.top_speed_kmh).toBe(100);
   });
 
+  it("writes the previous week's final values to the previous week only, and refuses any other week", async () => {
+    const u = await createUser();
+    const crew = await createCrew(u);
+    const sid = await callOk<string>(u.client, "live", "start_session", { p_crew_ids: [crew.id] });
+    const thisWeek = await callOk<string>(u.client, "live", "checkpoint_session", { p_session: sid, p_max_speed_kmh: 90, p_distance_m: 10 });
+    const day = (offset: number) => new Date(Date.parse(thisWeek + "T00:00:00Z") + offset * 86400000).toISOString().slice(0, 10);
+    const prev = day(-7);
+    expect((await call(u.client, "live", "checkpoint_session", { p_session: sid, p_max_speed_kmh: 200, p_distance_m: 500, p_week_start: prev })).error).toBeNull();
+    expect((await call(u.client, "live", "checkpoint_session", { p_session: sid, p_max_speed_kmh: 200, p_distance_m: 500, p_week_start: day(-14) })).error).toBe("invalid_checkpoint");
+    expect((await call(u.client, "live", "checkpoint_session", { p_session: sid, p_max_speed_kmh: 200, p_distance_m: 500, p_week_start: day(7) })).error).toBe("invalid_checkpoint");
+    const now = await callOk<{ top_speed_kmh: number }[]>(u.client, "leaderboard", "weekly_top_speed", { p_crew: crew.id });
+    const before = await callOk<{ top_speed_kmh: number }[]>(u.client, "leaderboard", "weekly_top_speed", { p_crew: crew.id, p_week_start: prev });
+    expect(now[0]!.top_speed_kmh).toBe(90);
+    expect(before[0]!.top_speed_kmh).toBe(200);
+  });
+
   it("garbage requests cannot lock a person's email out of registering", async () => {
     const founder = await createUser();
     const [invite] = await callOk<{ code: string }[]>(founder.client, "referral", "create_invite");

@@ -6,6 +6,7 @@ interface Entry {
   channel: ChannelLike;
   refs: number;
   ready: boolean;
+  trackState: Record<string, unknown> | null;
   listeners: Set<Listener>;
 }
 
@@ -19,11 +20,13 @@ export class ChannelHub {
     let entry = this.entries.get(crewId);
     if (!entry) {
       const channel = this.backend.channel(`crew:${crewId}`);
-      const created: Entry = { channel, refs: 0, ready: false, listeners: new Set() };
+      const created: Entry = { channel, refs: 0, ready: false, trackState: null, listeners: new Set() };
       channel.on("pos", (payload) => created.listeners.forEach((fn) => fn("pos", payload)));
       channel.on("stop", (payload) => created.listeners.forEach((fn) => fn("stop", payload)));
       channel.subscribe((status) => {
         created.ready = status === "SUBSCRIBED";
+        // Presence asked for before the channel was ready is announced as soon as it is, and again after a reconnect.
+        if (created.ready && created.trackState) channel.track(created.trackState).catch(() => undefined);
       });
       this.entries.set(crewId, created);
       entry = created;
@@ -57,11 +60,16 @@ export class ChannelHub {
 
   track(crewId: string, state: Record<string, unknown>): void {
     const entry = this.entries.get(crewId);
-    if (entry?.ready) entry.channel.track(state).catch(() => undefined);
+    if (!entry) return;
+    entry.trackState = state;
+    if (entry.ready) entry.channel.track(state).catch(() => undefined);
   }
 
   untrack(crewId: string): void {
-    this.entries.get(crewId)?.channel.untrack().catch(() => undefined);
+    const entry = this.entries.get(crewId);
+    if (!entry) return;
+    entry.trackState = null;
+    entry.channel.untrack().catch(() => undefined);
   }
 
   isReady(crewId: string): boolean {

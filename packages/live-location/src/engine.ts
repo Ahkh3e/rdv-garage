@@ -14,7 +14,8 @@ export interface EngineDeps {
   now(): number;
   weekOf(ts: number): string;
   startSession(crewIds: string[]): Promise<string>;
-  checkpoint(sessionId: string, maxSpeedKmh: number | null, distanceM: number | null): Promise<string>;
+  // weekStart is given only to write the previous week's final values just after the Toronto week rolls over.
+  checkpoint(sessionId: string, maxSpeedKmh: number | null, distanceM: number | null, weekStart?: string): Promise<string>;
   endSession(sessionId: string): Promise<void>;
   broadcast(crewId: string, event: "pos" | "stop", payload: Record<string, unknown>): void;
   publishSelf(position: { lat: number; lng: number; heading: number | null; ts: number; crewIds: string[] } | null): void;
@@ -26,6 +27,10 @@ export const STATIONARY_BROADCAST_MS = 15000;
 export const TICK_MS = 30000;
 const MOVING_SPEED_MS = 1;
 const MAX_JUMP_M = 1500;
+// A parked car stops producing fixes, so "moving" must expire. After this long without a fix the member counts as stationary.
+const FIX_FRESH_MS = 6000;
+// A reading this imprecise says more about the satellites than the car, so it is not used for speed or distance.
+const MAX_ACCURACY_M = 100;
 
 // Drives a live session: cadence of position broadcasts, per-week speed and distance segments,
 // and the checkpoint/heartbeat calls that keep the session alive on the server.
@@ -75,17 +80,21 @@ export class LiveEngine {
     if (!this.sessionId) return;
     const week = this.deps.weekOf(fix.ts);
     if (week !== this.week) {
-      // New week: the segment starts from zero and never carries last week's max forward.
+      // New week: write the old week's final values to the old week, then start from zero so the max never carries over.
+      if (this.sessionId && (this.maxKmh > 0 || this.distanceM > 0)) {
+        void this.deps.checkpoint(this.sessionId, this.maxKmh, this.distanceM, this.week).catch((e) => this.deps.onError?.(e));
+      }
       this.week = week;
       this.maxKmh = 0;
       this.distanceM = 0;
     }
-    if (this.lastFix) {
+    const precise = fix.accuracy === null || fix.accuracy <= MAX_ACCURACY_M;
+    if (this.lastFix && precise) {
       const d = haversineMeters(this.lastFix, fix);
       if (d < MAX_JUMP_M) this.distanceM += d;
     }
     if (fix.speedMs !== null && fix.speedMs >= 0) {
-      this.maxKmh = Math.max(this.maxKmh, msToKmh(fix.speedMs));
+      if (precise) this.maxKmh = Math.max(this.maxKmh, msToKmh(fix.speedMs));
       this.moving = fix.speedMs > MOVING_SPEED_MS;
     } else if (this.lastFix) {
       this.moving = haversineMeters(this.lastFix, fix) / Math.max(1, (fix.ts - this.lastFix.ts) / 1000) > MOVING_SPEED_MS;
@@ -107,8 +116,12 @@ export class LiveEngine {
 
   // A parked car stops producing location fixes, so nothing would be broadcast. Called on a short timer: when the
   // member is not moving and the stationary interval has passed, send the last known position again with a fresh timestamp.
+  private movingAt(now: number): boolean {
+    return this.moving && this.lastFix !== null && now - this.lastFix.ts < FIX_FRESH_MS;
+  }
+
   rebroadcast(now: number): void {
-    if (!this.sessionId || !this.lastFix || this.moving) return;
+    if (!this.sessionId || !this.lastFix || this.movingAt(now)) return;
     if (now - this.lastBroadcast < STATIONARY_BROADCAST_MS) return;
     this.lastBroadcast = now;
     const f = this.lastFix;
@@ -132,8 +145,8 @@ export class LiveEngine {
     if (!this.sessionId || now - this.lastTick < TICK_MS) return;
     this.lastTick = now;
     this.tickCount += 1;
-    // Moving: a checkpoint about once a minute. Stationary: a heartbeat every tick.
-    if (this.moving) {
+    // Moving: a checkpoint about once a minute. Stationary (or no fix for a while): a heartbeat every tick.
+    if (this.movingAt(now)) {
       if (this.tickCount % 2 === 0) await this.sendCheckpoint(true);
     } else {
       await this.sendCheckpoint(false);
