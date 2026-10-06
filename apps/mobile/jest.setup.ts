@@ -1,14 +1,15 @@
 import "react-native-gesture-handler/jestSetup";
 
-jest.mock("react-native-maps", () => {
+jest.mock("@maplibre/maplibre-react-native", () => {
   const React = require("react");
   const { View } = require("react-native");
-  const MapView = React.forwardRef((props: any, ref: any) => {
-    React.useImperativeHandle(ref, () => ({ animateCamera: jest.fn() }));
-    return React.createElement(View, { testID: "map-view" }, props.children);
+  const Map = (props: any) => React.createElement(View, { testID: props.testID ?? "map-view" }, props.children);
+  const Camera = React.forwardRef((_props: any, ref: any) => {
+    React.useImperativeHandle(ref, () => ({ easeTo: jest.fn(), fitBounds: jest.fn(), flyTo: jest.fn(), jumpTo: jest.fn(), setStop: jest.fn() }));
+    return null;
   });
-  const Marker = (props: any) => React.createElement(View, { testID: `marker-${props.identifier}` }, props.children);
-  return { __esModule: true, default: MapView, Marker, PROVIDER_GOOGLE: "google" };
+  const ViewAnnotation = (props: any) => React.createElement(View, { testID: `marker-${props.id}` }, props.children);
+  return { __esModule: true, Map, Camera, ViewAnnotation };
 });
 
 jest.mock("expo-location", () => ({

@@ -74,7 +74,7 @@ export function Board() {
         <Empty icon="trophy-outline" title="No crew on" body="Switch on a crew in Crews to see its board." />
       ) : (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, alignItems: "flex-start" }}>
             {crews.map((crew) => {
               const on = crew.id === crewId;
               const style = crewStyle(crew.styleIndex);

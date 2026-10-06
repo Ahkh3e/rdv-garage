@@ -35,7 +35,7 @@ export function CrewsHome({ navigation }: { navigation: any }) {
   };
 
   const actions = (
-    <View style={{ flexDirection: "row", gap: 12 }}>
+    <View style={{ flexDirection: "row", gap: 12, alignSelf: "stretch" }}>
       <Button title="Create crew" testID="crews-create" style={{ flex: 1 }} onPress={() => navigation.navigate("CreateCrew")} />
       <Button title="Join with link" testID="crews-join" variant="secondary" style={{ flex: 1 }} onPress={() => navigation.navigate("JoinCrew")} />
     </View>

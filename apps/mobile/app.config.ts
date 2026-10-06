@@ -1,7 +1,6 @@
 import type { ExpoConfig } from "expo/config";
 
 const linkDomain = process.env.EXPO_PUBLIC_LINK_DOMAIN ?? "links.rdvgarage.example";
-const googleMapsKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 const config: ExpoConfig = {
   name: "RDV Garage",
@@ -16,6 +15,8 @@ const config: ExpoConfig = {
     supportsTablet: false,
     bundleIdentifier: "app.rdvgarage.mobile",
     associatedDomains: [`applinks:${linkDomain}`],
+    // Needed so the secure store (keychain) works in simulator builds as well as device builds.
+    entitlements: { "keychain-access-groups": ["$(AppIdentifierPrefix)app.rdvgarage.mobile"] },
     infoPlist: {
       UIBackgroundModes: ["location"],
       NSLocationWhenInUseUsageDescription: "RDV Garage shows you on the map and follows you while you drive.",
@@ -68,7 +69,7 @@ const config: ExpoConfig = {
       },
     ],
     ["expo-image-picker", { photosPermission: "Choose a profile photo." }],
-    ["react-native-maps", { androidGoogleMapsApiKey: googleMapsKey }],
+    "@maplibre/maplibre-react-native",
   ],
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321",
