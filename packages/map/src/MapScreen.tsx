@@ -89,6 +89,23 @@ export function MapScreen() {
     (p) => p.userId !== myId && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
 
+  // Follow mode keeps the camera close to you, so crew members a few blocks away are off screen. Tapping the live chip
+  // zooms out to fit everyone who is live.
+  const showEveryone = () => {
+    if (others.length === 0) return;
+    const points = others.map((p) => [p.lng, p.lat] as const);
+    if (me) points.push([me.lng, me.lat]);
+    const lngs = points.map((p) => p[0]);
+    const lats = points.map((p) => p[1]);
+    setFollow(false);
+    camera.current?.fitBounds([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)], {
+      padding: { top: 140, right: 60, bottom: BOTTOM_PADDING + 40, left: 60 },
+      pitch: 0,
+      bearing: 0,
+      duration: 700,
+    });
+  };
+
   return (
     <View style={styles.root}>
       <Map
@@ -121,7 +138,9 @@ export function MapScreen() {
       </Map>
 
       <View style={styles.top} pointerEvents="box-none">
-        <Chip label={others.length === 0 ? "No one else live" : `${others.length} live`} selected={others.length > 0} />
+        <Pressable testID="map-show-everyone" accessibilityRole="button" accessibilityLabel="Show everyone live" onPress={showEveryone}>
+          <Chip label={others.length === 0 ? "No one else live" : `${others.length} live`} selected={others.length > 0} />
+        </Pressable>
         {crewState.selected.length === 0 && crewState.loaded ? (
           <Pressable onPress={() => shell.navigate("Tabs")}>
             <Text variant="caption" muted>Switch on a crew in Crews to see its members.</Text>
