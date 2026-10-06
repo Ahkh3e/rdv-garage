@@ -2,7 +2,6 @@ import { anonClient, clientIp, corsHeaders, environment, fail, json, pgCode, ser
 
 const HANDLE = /^[a-z0-9_]{3,20}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TERMS_VERSION = "v1";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -24,16 +23,16 @@ Deno.serve(async (req) => {
 
   const admin = serviceClient();
 
-  const ip = clientIp(req);
-  for (const [key, max] of [[`register:${ip}`, 60], [`register_email:${email}`, 5]] as const) {
-    const { error } = await admin.schema("accounts").rpc("rate_limit", { p_key: key, p_max: max, p_window_seconds: 3600 });
-    if (error) return fail(pgCode(error), 429);
-  }
+  // Per-address limit first, on every request. The per-email limit comes later and only counts requests that
+  // got this far, so someone else's garbage requests cannot lock a person's email out of registering.
+  const limit = await admin.schema("accounts").rpc("rate_limit", { p_key: `register:${clientIp(req)}`, p_max: 60, p_window_seconds: 3600 });
+  if (limit.error) return fail(pgCode(limit.error), 429);
 
   if (!HANDLE.test(handle)) return fail("handle_invalid");
-  if (!EMAIL.test(email)) return fail("email_invalid");
+  if (!EMAIL.test(email) || email.length > 254) return fail("email_invalid");
   if (password.length < 8) return fail("password_too_short");
-  if (termsVersion !== TERMS_VERSION) return fail("terms_required");
+  const { data: currentTerms } = await admin.schema("accounts").rpc("current_terms_version");
+  if (termsVersion !== currentTerms) return fail("terms_required");
   if (!ageConfirmed) return fail("age_confirmation_required");
 
   const { data: invite, error: inviteError } = await admin.schema("referral").rpc("validate_for_register", { p_code: inviteCode });
@@ -44,6 +43,9 @@ Deno.serve(async (req) => {
   if (!validHandle) return fail("handle_invalid");
   const { data: available } = await admin.schema("accounts").rpc("handle_available", { p_handle: handle });
   if (!available) return fail("handle_taken");
+
+  const emailLimit = await admin.schema("accounts").rpc("rate_limit", { p_key: `register_email:${email}`, p_max: 5, p_window_seconds: 3600 });
+  if (emailLimit.error) return fail(pgCode(emailLimit.error), 429);
 
   const testMode = testModeEnabled();
 

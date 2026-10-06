@@ -20,8 +20,14 @@ begin
   exception when others then
     headers := null;
   end;
-  ip := split_part(coalesce(headers ->> 'x-forwarded-for', headers ->> 'x-real-ip', ''), ',', 1);
-  return coalesce(nullif(trim(ip), ''), 'unknown');
+  -- Behind Cloudflare the platform sets cf-connecting-ip and clients cannot forge it. A client can put anything at the
+  -- front of x-forwarded-for, so when only that header exists take the last entry, which the nearest proxy added.
+  ip := coalesce(
+    nullif(trim(headers ->> 'cf-connecting-ip'), ''),
+    nullif(trim(headers ->> 'x-real-ip'), ''),
+    nullif(trim((regexp_split_to_array(coalesce(headers ->> 'x-forwarded-for', ''), '\s*,\s*'))[array_length(regexp_split_to_array(coalesce(headers ->> 'x-forwarded-for', ''), '\s*,\s*'), 1)]), ''),
+    'unknown');
+  return ip;
 end $$;
 
 -- Fixed-window rate limit. Raises rate_limited when the window is full.

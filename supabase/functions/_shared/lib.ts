@@ -30,8 +30,12 @@ export function anonClient(): SupabaseClient {
 }
 
 export function clientIp(req: Request): string {
-  const forwarded = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "";
-  return forwarded.split(",")[0].trim() || "unknown";
+  // The platform sets cf-connecting-ip and clients cannot forge it. A client controls the front of x-forwarded-for,
+  // so when only that header exists use its last entry, which the nearest proxy added.
+  const direct = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-real-ip");
+  if (direct?.trim()) return direct.trim();
+  const forwarded = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return forwarded.at(-1) ?? "unknown";
 }
 
 // Maps a Postgres P0001 error raised by our functions to its stable code.

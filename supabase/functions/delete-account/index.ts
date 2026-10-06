@@ -9,18 +9,33 @@ Deno.serve(async (req) => {
 
   const admin = serviceClient();
 
-  // Steps 1-4 of the deletion path run in one database function.
-  const { data: avatar, error } = await admin.schema("accounts").rpc("delete_account_data", { p_user: uid });
+  // Avatar files first. Listing and removing is repeatable, so a failure here leaves the account untouched and the
+  // person can simply try again.
+  const paths: string[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const { data: files, error } = await admin.storage.from("avatars").list(uid, { limit: 100, offset });
+    if (error) {
+      console.error("avatar list failed", error.message);
+      return fail("deletion_failed", 500);
+    }
+    if (!files || files.length === 0) break;
+    paths.push(...files.map((f) => `${uid}/${f.name}`));
+    if (files.length < 100) break;
+  }
+  if (paths.length > 0) {
+    const { error } = await admin.storage.from("avatars").remove(paths);
+    if (error) {
+      console.error("avatar remove failed", error.message);
+      return fail("deletion_failed", 500);
+    }
+  }
+
+  // Steps 1-4 of the deletion path run in one database function. Running it again is harmless.
+  const { error } = await admin.schema("accounts").rpc("delete_account_data", { p_user: uid });
   if (error) {
     console.error("delete_account_data failed", error.message);
     return fail("deletion_failed", 500);
   }
-
-  // Avatar files.
-  const { data: files } = await admin.storage.from("avatars").list(uid);
-  const paths = (files ?? []).map((f) => `${uid}/${f.name}`);
-  if (typeof avatar === "string" && avatar && !paths.includes(avatar)) paths.push(avatar);
-  if (paths.length > 0) await admin.storage.from("avatars").remove(paths);
 
   // Step 5: the auth user. The profile tombstone stays.
   const { error: deleteError } = await admin.auth.admin.deleteUser(uid);

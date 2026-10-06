@@ -438,6 +438,10 @@ begin
 end $$;
 
 -- Heartbeat and checkpoint in one call. Returns the Toronto-time week the checkpoint was written to.
+-- Values are cumulative for the current week segment: the app starts them from zero when the Toronto week changes,
+-- so a session that crosses Monday 00:00 never credits its earlier total to the new week.
+-- There are no speed limits or plausibility rules (decision 0007), but NaN and Infinity are rejected: they sort above every
+-- number and could never be corrected, so one bad value would hold first place all week.
 create function live.checkpoint_session(p_session uuid, p_max_speed_kmh real default null, p_distance_m real default null)
 returns date
 language plpgsql security definer set search_path = ''
@@ -445,9 +449,17 @@ as $$
 declare
   uid uuid := private.require_active();
   wk date := private.current_week_start();
-  speed real := greatest(coalesce(p_max_speed_kmh, 0), 0);
-  dist real := greatest(coalesce(p_distance_m, 0), 0);
+  speed real;
+  dist real;
 begin
+  if p_max_speed_kmh is not null and (p_max_speed_kmh = 'NaN'::real or abs(p_max_speed_kmh) = 'Infinity'::real) then
+    perform private.fail('invalid_checkpoint');
+  end if;
+  if p_distance_m is not null and (p_distance_m = 'NaN'::real or abs(p_distance_m) = 'Infinity'::real) then
+    perform private.fail('invalid_checkpoint');
+  end if;
+  speed := greatest(coalesce(p_max_speed_kmh, 0), 0);
+  dist := greatest(coalesce(p_distance_m, 0), 0);
   update live.sessions set last_seen_at = now()
   where id = p_session and user_id = uid and ended_at is null;
   if not found then perform private.fail('session_not_found'); end if;
@@ -601,22 +613,33 @@ declare
   n integer := 0;
   r record;
 begin
+  -- One bad row must not stop the sweep, and an auth user is only removed once its profile is gone.
   for r in
     select u.id from auth.users u
     where u.email_confirmed_at is null and u.created_at < now() - interval '24 hours'
   loop
-    delete from accounts.profiles where id = r.id and status = 'active'
-      and not exists (select 1 from crews.members m where m.user_id = r.id);
-    delete from auth.users where id = r.id;
-    n := n + 1;
+    begin
+      delete from accounts.profiles where id = r.id and status = 'active'
+        and not exists (select 1 from crews.members m where m.user_id = r.id);
+      if not exists (select 1 from accounts.profiles p where p.id = r.id) then
+        delete from auth.users where id = r.id;
+        n := n + 1;
+      end if;
+    exception when others then
+      raise warning 'cleanup_unconfirmed skipped %: %', r.id, sqlerrm;
+    end;
   end loop;
   for r in
     select u.id from auth.users u
     where u.created_at < now() - interval '1 hour'
       and not exists (select 1 from accounts.profiles p where p.id = u.id)
   loop
-    delete from auth.users where id = r.id;
-    n := n + 1;
+    begin
+      delete from auth.users where id = r.id;
+      n := n + 1;
+    exception when others then
+      raise warning 'cleanup_unconfirmed skipped %: %', r.id, sqlerrm;
+    end;
   end loop;
   return n;
 end $$;
