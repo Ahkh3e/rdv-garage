@@ -78,7 +78,7 @@ grant execute on function
   crews.remove_member(uuid, uuid), crews.transfer_ownership(uuid, uuid),
   crews.regenerate_crew_link(uuid), crews.delete_crew(uuid), crews.list_my_crews(),
   crews.set_selected_crews(uuid[]),
-  live.start_session(uuid[], text), live.checkpoint_session(uuid, real, real), live.end_session(uuid),
+  live.start_session(uuid[], text), live.checkpoint_session(uuid, real, real, date), live.end_session(uuid),
   leaderboard.weekly_top_speed(uuid, date)
   to authenticated;
 

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#0A0A0B">
+<title>Reset your password</title>
+<link rel="stylesheet" href="/assets/styles.css">
+</head><body><main>
+  <div class="eyebrow">RDV Garage</div>
+  <h1>New password</h1>
+
+  <section id="app" class="card hidden">
+    <p>Open this reset in the app on your phone.</p>
+    <a id="open" class="btn primary" href="#">Open in RDV Garage</a>
+  </section>
+
+  <section id="form" class="card hidden">
+    <p>Or set a new password here. Your other devices will be signed out.</p>
+    <div><label for="pw">New password</label><input id="pw" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters"></div>
+    <p id="err" class="error hidden"></p>
+    <button id="save" class="btn">Set password</button>
+  </section>
+
+  <section id="done" class="card hidden"><h2>Password updated</h2><p>Open the app and sign in with your new password.</p></section>
+  <section id="warn" class="card hidden"><p class="error">Your password was changed, but we couldn't sign out your other devices. Do that from Me, Devices in the app.</p></section>
+  <section id="expired" class="card hidden"><h2>This reset link has expired</h2><p>Go back to the app and request a new one from the sign in screen.</p></section>
+
+  <footer><div class="notice" id="disclaimer"></div><a href="/terms">Read the full safety terms</a></footer>
+</main>
+<script src="/config.js"></script>
+<script src="/assets/common.js"></script>
+<script>
+  const L = window.RDVLinks;
+  document.getElementById("disclaimer").textContent = L.cfg.disclaimer || "";
+  const params = new URLSearchParams(location.hash.slice(1));
+  const access = params.get("access_token");
+  if (!access || params.get("type") !== "recovery") L.show("expired");
+  else {
+    if (L.isIOS || L.isAndroid) { document.getElementById("open").href = "rdvgarage://reset" + location.hash; L.show("app"); }
+    L.show("form");
+    document.getElementById("save").addEventListener("click", async () => {
+      const pw = document.getElementById("pw").value;
+      const err = document.getElementById("err");
+      err.classList.add("hidden");
+      if (pw.length < 8) { err.textContent = "Use at least 8 characters."; return err.classList.remove("hidden"); }
+      const res = await fetch(L.cfg.supabaseUrl + "/auth/v1/user", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", apikey: L.cfg.supabaseKey, Authorization: "Bearer " + access },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (!res.ok) { err.textContent = "That link has expired. Request a new one in the app."; return err.classList.remove("hidden"); }
+      // Supabase does not sign out other devices on a reset, so do it here, and say so if it fails.
+      let revoked = false;
+      try {
+        const r = await fetch(L.cfg.supabaseUrl + "/rest/v1/rpc/revoke_other_sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: L.cfg.supabaseKey, Authorization: "Bearer " + access, "Content-Profile": "accounts" },
+          body: "{}",
+        });
+        revoked = r.ok;
+      } catch { revoked = false; }
+      if (!revoked) L.show("warn");
+      L.hide("form"); L.hide("app"); L.show("done");
+    });
+  }
+</script></body></html>

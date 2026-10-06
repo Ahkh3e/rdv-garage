@@ -442,13 +442,16 @@ end $$;
 -- so a session that crosses Monday 00:00 never credits its earlier total to the new week.
 -- There are no speed limits or plausibility rules (decision 0007), but NaN and Infinity are rejected: they sort above every
 -- number and could never be corrected, so one bad value would hold first place all week.
-create function live.checkpoint_session(p_session uuid, p_max_speed_kmh real default null, p_distance_m real default null)
+-- p_week_start lets the app write a week's final values just after the Toronto week rolls over. It may name only the
+-- current week or the one before it.
+create function live.checkpoint_session(p_session uuid, p_max_speed_kmh real default null, p_distance_m real default null, p_week_start date default null)
 returns date
 language plpgsql security definer set search_path = ''
 as $$
 declare
   uid uuid := private.require_active();
   wk date := private.current_week_start();
+  target date;
   speed real;
   dist real;
 begin
@@ -458,6 +461,10 @@ begin
   if p_distance_m is not null and (p_distance_m = 'NaN'::real or abs(p_distance_m) = 'Infinity'::real) then
     perform private.fail('invalid_checkpoint');
   end if;
+  if p_week_start is not null and p_week_start <> wk and p_week_start <> wk - 7 then
+    perform private.fail('invalid_checkpoint');
+  end if;
+  target := coalesce(p_week_start, wk);
   speed := greatest(coalesce(p_max_speed_kmh, 0), 0);
   dist := greatest(coalesce(p_distance_m, 0), 0);
   update live.sessions set last_seen_at = now()
@@ -465,7 +472,7 @@ begin
   if not found then perform private.fail('session_not_found'); end if;
   if p_max_speed_kmh is not null or p_distance_m is not null then
     insert into live.segments as s (session_id, week_start, max_speed_kmh, max_speed_at, distance_m, updated_at)
-    values (p_session, wk, speed, case when speed > 0 then now() end, dist, now())
+    values (p_session, target, speed, case when speed > 0 then now() end, dist, now())
     on conflict (session_id, week_start) do update
       set max_speed_at = case when excluded.max_speed_kmh > s.max_speed_kmh then now() else s.max_speed_at end,
           max_speed_kmh = greatest(s.max_speed_kmh, excluded.max_speed_kmh),

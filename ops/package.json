@@ -1,0 +1,36 @@
+{
+  "name": "@rdv/ops",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "rdv-ops": "./bin/rdv-ops.mjs"
+  },
+  "scripts": {
+    "ops": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.58.0",
+    "commander": "^14.0.0",
+    "@rdv/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "~6.0.3",
+    "vitest": "^3.0.0"
+  },
+  "exports": {
+    ".": "./src/cli.ts",
+    "./context": "./src/context.ts",
+    "./config": "./src/config.ts",
+    "./lib": "./src/lib.ts",
+    "./guard": "./src/guard.ts",
+    "./users": "./src/commands/users.ts",
+    "./crews": "./src/commands/crews.ts",
+    "./sim": "./src/commands/sim.ts",
+    "./misc": "./src/commands/misc.ts"
+  }
+}

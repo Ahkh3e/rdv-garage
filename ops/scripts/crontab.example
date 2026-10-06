@@ -1,0 +1,4 @@
+# Install with: sudo crontab -u rdv-ops -e   (a dedicated, unprivileged user)
+# Keep the free project awake, and take an encrypted backup.
+17 */6 * * *  /opt/rdv-garage/ops/scripts/ping.sh   >> /var/log/rdv-ops/ping.log   2>&1
+43 3 * * *     /opt/rdv-garage/ops/scripts/backup.sh >> /var/log/rdv-ops/backup.log 2>&1
