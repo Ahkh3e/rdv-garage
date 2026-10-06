@@ -134,6 +134,29 @@ describe("operator toolkit against a real stack", () => {
     expect(lines.every((l) => l.environment === "production")).toBe(true);
   });
 
+  it("in production, fake users and crews never touch a real user's crew and nothing is left behind on refusal", async () => {
+    const prodCtx = () => {
+      const c = makeCtx({}, config("production"));
+      c.log = () => undefined;
+      return c;
+    };
+    const owner = await createUser(uniq("realowner"));
+    await admin.schema("accounts").from("profiles").update({ is_synthetic: false }).eq("id", owner.id);
+    const crew = await createCrew(owner, "Real Production Crew");
+    await admin.schema("crews").from("crews").update({ is_synthetic: false }).eq("id", crew.id);
+    const count = async (t: string) => (await sql<{ n: number }>(`select count(*)::int as n from ${t}`))[0]!.n;
+    const before = { users: await count("accounts.profiles"), crews: await count("crews.crews"), members: await count("crews.members") };
+
+    await expect(simLive(prodCtx(), { crewId: crew.id, users: 2, durationSec: 1, route: "city" })).rejects.toBeInstanceOf(GuardError);
+    await expect(crewCreate(prodCtx(), { owner: owner.handle, members: 2 })).rejects.toBeInstanceOf(GuardError);
+    await expect(crewAdd(prodCtx(), { id: crew.id, handle: (await createUser(uniq("sim"))).handle })).rejects.toBeInstanceOf(GuardError);
+    const after = { users: await count("accounts.profiles"), crews: await count("crews.crews"), members: await count("crews.members") };
+    // Only the one synthetic user made for the crewAdd check above exists beyond the baseline.
+    expect(after.crews).toBe(before.crews);
+    expect(after.members).toBe(before.members);
+    expect(after.users).toBe(before.users + 1);
+  });
+
   it("will not delete a real crew without its name", async () => {
     const c = ctx();
     const owner = await createUser(uniq("real"));

@@ -1,4 +1,4 @@
-import { type Ctx, check, randomHandle, randomPassword } from "./context";
+import { type Ctx, check, randomCode, randomHandle, randomPassword } from "./context";
 
 export interface Profile {
   id: string;
@@ -73,7 +73,7 @@ export async function profileById(ctx: Ctx, id: string): Promise<Profile> {
 
 // Inserts a crew owned by a user, with its owner membership and link, using the service role.
 export async function createSyntheticCrew(ctx: Ctx, ownerId: string, name: string): Promise<{ id: string; link_code: string }> {
-  const code = Array.from({ length: 16 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
+  const code = randomCode(16);
   const crew = await ctx.admin.schema("crews").from("crews").insert({ name, owner_id: ownerId, link_code: code, is_synthetic: true }).select("id,link_code").single();
   if (crew.error) throw new Error(`create crew: ${crew.error.message}`);
   const member = await ctx.admin.schema("crews").from("members").insert({ crew_id: crew.data.id, user_id: ownerId, role: "owner" });

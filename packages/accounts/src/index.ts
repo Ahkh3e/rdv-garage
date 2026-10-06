@@ -8,6 +8,7 @@ import { EditProfile } from "./screens/EditProfile";
 import { Legal } from "./screens/Legal";
 import { Me } from "./screens/Me";
 import { ResetPassword } from "./screens/ResetPassword";
+import { consumeResetIntent } from "./resetIntent";
 import { pendingInvite } from "./state";
 
 export { pendingInvite, extractInviteCode } from "./state";
@@ -38,6 +39,10 @@ export const accounts: Module = {
     shell.addLinkHandler({
       kind: "reset",
       async handle(link: { accessToken: string; refreshToken: string }) {
+        if (!(await consumeResetIntent())) {
+          Alert.alert("Reset link not requested here", "Request a reset from the sign in screen on this phone, then open the link from that email.");
+          return;
+        }
         try {
           await shell.backend.auth.startRecovery(link.accessToken, link.refreshToken);
           shell.navigate("ResetPassword");

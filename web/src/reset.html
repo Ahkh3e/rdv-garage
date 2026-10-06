@@ -21,6 +21,7 @@
   </section>
 
   <section id="done" class="card hidden"><h2>Password updated</h2><p>Open the app and sign in with your new password.</p></section>
+  <section id="warn" class="card hidden"><p class="error">Your password was changed, but we couldn't sign out your other devices. Do that from Me, Devices in the app.</p></section>
   <section id="expired" class="card hidden"><h2>This reset link has expired</h2><p>Go back to the app and request a new one from the sign in screen.</p></section>
 
   <footer><div class="notice" id="disclaimer"></div><a href="/terms">Read the full safety terms</a></footer>
@@ -47,12 +48,17 @@
         body: JSON.stringify({ password: pw }),
       });
       if (!res.ok) { err.textContent = "That link has expired. Request a new one in the app."; return err.classList.remove("hidden"); }
-      // Supabase does not sign out other devices on a reset, so do it here.
-      await fetch(L.cfg.supabaseUrl + "/rest/v1/rpc/revoke_other_sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: L.cfg.supabaseKey, Authorization: "Bearer " + access, "Content-Profile": "accounts" },
-        body: "{}",
-      }).catch(() => {});
+      // Supabase does not sign out other devices on a reset, so do it here, and say so if it fails.
+      let revoked = false;
+      try {
+        const r = await fetch(L.cfg.supabaseUrl + "/rest/v1/rpc/revoke_other_sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: L.cfg.supabaseKey, Authorization: "Bearer " + access, "Content-Profile": "accounts" },
+          body: "{}",
+        });
+        revoked = r.ok;
+      } catch { revoked = false; }
+      if (!revoked) L.show("warn");
       L.hide("form"); L.hide("app"); L.show("done");
     });
   }

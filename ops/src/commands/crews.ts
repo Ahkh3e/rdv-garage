@@ -1,12 +1,15 @@
 import type { Ctx } from "../context";
 import { check } from "../context";
-import { assertCrewAddAllowed } from "../guard";
+import { assertCrewAddAllowed, assertSyntheticCrewOwner } from "../guard";
 import { GuardError } from "../guard";
 import { addMember, createSyntheticCrew, createSyntheticUser, crewOwner, findProfile, profileById } from "../lib";
 
 export async function crewCreate(ctx: Ctx, opts: { owner?: string; members: number; name?: string }) {
   if (ctx.dryRun) return ctx.log(`Would create a synthetic crew with ${opts.members} extra member(s)${opts.owner ? ` owned by ${opts.owner}` : ""}.`);
-  const owner = opts.owner ? await findProfile(ctx, opts.owner) : { ...(await createSyntheticUser(ctx)), is_synthetic: true };
+  // Check the guard before creating anything, so a refusal leaves nothing behind.
+  const existingOwner = opts.owner ? await findProfile(ctx, opts.owner) : null;
+  assertSyntheticCrewOwner(ctx.config, existingOwner ? existingOwner.is_synthetic : true);
+  const owner = existingOwner ?? { ...(await createSyntheticUser(ctx)), is_synthetic: true };
   const ownerId = owner.id;
   const ownerSynthetic = "is_synthetic" in owner ? (owner.is_synthetic as boolean) : true;
   const crew = await createSyntheticCrew(ctx, ownerId, opts.name ?? `Sim ${Math.random().toString(36).slice(2, 7)}`);

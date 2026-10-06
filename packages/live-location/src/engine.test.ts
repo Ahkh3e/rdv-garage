@@ -139,3 +139,67 @@ describe("LiveEngine", () => {
     expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(before);
   });
 });
+
+describe("LiveEngine: parked drivers, dropped crews, and races", () => {
+  it("keeps broadcasting a parked member's last position on the stationary interval", async () => {
+    const { engine, log, advance, fix } = setup();
+    await engine.start(["a"]);
+    engine.onFix(fix({ speedMs: 0 }));
+    expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(1);
+    advance(10000);
+    engine.rebroadcast(advance(0));
+    expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(1);
+    advance(6000);
+    engine.rebroadcast(advance(0));
+    const pos = log.broadcasts.filter((b) => b.event === "pos");
+    expect(pos.length).toBe(2);
+    expect(pos[1]!.payload.ts).toBe(advance(0));
+    expect(pos[1]!.payload.lat).toBe(43.65);
+  });
+
+  it("does not rebroadcast while moving or after stop", async () => {
+    const { engine, log, advance, fix } = setup();
+    await engine.start(["a"]);
+    engine.onFix(fix({ speedMs: 20 }));
+    advance(20000);
+    engine.rebroadcast(advance(0));
+    expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(1);
+    await engine.stop();
+    advance(30000);
+    engine.rebroadcast(advance(0));
+    expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(1);
+  });
+
+  it("stops sharing with crews that were dropped and tells them", async () => {
+    const { engine, log, advance, fix } = setup();
+    await engine.start(["a", "b"]);
+    expect(engine.dropCrews(["a"])).toEqual(["b"]);
+    expect(log.broadcasts.filter((b) => b.event === "stop").map((b) => b.crew)).toEqual(["a"]);
+    engine.onFix(fix({ speedMs: 20 }));
+    expect(log.broadcasts.filter((b) => b.event === "pos").map((b) => b.crew)).toEqual(["b"]);
+    advance(0);
+  });
+
+  it("closes a session that was restarted after the person already stopped", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let starts = 0;
+    const { engine, log, advance, fix } = setup({
+      startSession: async () => {
+        starts++;
+        if (starts === 2) await gate;
+        return `s${starts}`;
+      },
+      checkpoint: async () => { throw new Error("session_not_found"); },
+    });
+    await engine.start(["a"]);
+    engine.onFix(fix({ speedMs: 0 }));
+    const tick = engine.maybeTick(advance(TICK_MS));
+    await Promise.resolve();
+    await engine.stop();
+    release();
+    await tick;
+    expect(engine.sessionId).toBeNull();
+    expect(log.ended).toContain("s2");
+  });
+});

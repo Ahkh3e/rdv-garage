@@ -28,6 +28,8 @@ const MESSAGES: Record<string, string> = {
   owner_must_transfer: "Transfer ownership before leaving, or delete the crew.",
   session_not_found: "That session is no longer active.",
   suspended: "This account has been suspended.",
+  revoke_failed: "Your password was changed, but we couldn't sign out your other devices. Do that from Me, Devices.",
+  invalid_checkpoint: "That reading was not valid.",
   rate_limited: "Too many attempts. Try again later.",
   unauthenticated: "Sign in to continue.",
   registration_failed: "We couldn't create your account. Try again.",

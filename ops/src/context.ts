@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { writeAudit } from "./audit";
 import { loadConfig, type OpsConfig } from "./config";
@@ -50,6 +50,13 @@ export async function runCommand<T>(
     writeAudit(cfg.auditLogPath, { environment: cfg.environment, command: name, args, result: "error", detail: (error as Error).message });
     throw error;
   }
+}
+
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+// Invite codes and crew links are real credentials, so they come from the system's secure random source.
+export function randomCode(length: number): string {
+  return Array.from({ length }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
 }
 
 export function randomToken(bytes = 12): string {

@@ -1,7 +1,8 @@
 import { torontoWeekStart, previousWeekStart } from "@rdv/core/week";
 import { haversineMeters } from "@rdv/core/geo";
-import { type Ctx, anonClient, check, randomPassword } from "../context";
-import { addMember, createSyntheticCrew, createSyntheticUser, crewMembers, findProfile, type Profile } from "../lib";
+import { type Ctx, anonClient, check, randomCode, randomPassword } from "../context";
+import { assertCrewAddAllowed, assertSyntheticCrewOwner } from "../guard";
+import { addMember, createSyntheticCrew, createSyntheticUser, crewMembers, crewOwner, findProfile, profileById, type Profile } from "../lib";
 import { ROUTES, Walker, type RouteStyle } from "../routes";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -45,6 +46,9 @@ export async function simLive(ctx: Ctx, opts: SimLiveOptions): Promise<SimLiveRe
     crewId = (await createSyntheticCrew(ctx, owner.id, `Sim ${Math.random().toString(36).slice(2, 7)}`)).id;
     ctx.log(`created synthetic crew ${crewId}`);
   }
+  // Before anything is created: in production, fake drivers may only join a crew owned by a synthetic user.
+  const crew = await crewOwner(ctx, crewId);
+  assertCrewAddAllowed(ctx.config, (await profileById(ctx, crew.owner_id)).is_synthetic, true);
   const members = await ensureSyntheticMembers(ctx, crewId, opts.users);
   const posMs = opts.posIntervalMs ?? 3000;
   const checkpointMs = opts.checkpointIntervalMs ?? 30000;
@@ -176,7 +180,7 @@ export async function simInvites(ctx: Ctx, opts: { count: number; depth?: number
   if (ctx.config.environment === "production" && !inviter.is_synthetic) throw new Error("In production the inviter must be synthetic.");
   const chain: string[] = [inviter.handle];
   for (let i = 0; i < opts.count; i++) {
-    const code = Array.from({ length: 12 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
+    const code = randomCode(12);
     const invite = await ctx.admin.schema("referral").from("invites").insert({ inviter_id: inviter.id, code, expires_at: new Date(Date.now() + 24 * 3600_000).toISOString() }).select("id").single();
     if (invite.error) throw new Error(`invite: ${invite.error.message}`);
     const joined = await createSyntheticUser(ctx, inviter.id, invite.data.id as string);

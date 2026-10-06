@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Banner, Button, Input, Screen, Text, useAction, useShell } from "@rdv/core";
+import { markResetRequested } from "../resetIntent";
 
 export function ForgotPassword({ route }: { route: { params?: { email?: string } } }) {
   const shell = useShell();
@@ -7,6 +8,7 @@ export function ForgotPassword({ route }: { route: { params?: { email?: string }
   const [sent, setSent] = useState(false);
   const send = useAction(async () => {
     await shell.backend.auth.requestPasswordReset(email);
+    await markResetRequested();
     setSent(true);
   });
   return (

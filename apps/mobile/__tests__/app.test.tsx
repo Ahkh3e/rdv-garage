@@ -1,8 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { ShellApp } from "@rdv/core";
+import { pendingInvite } from "@rdv/accounts";
 import { makeBackend, makeShell, profileRow } from "./helpers";
 
-jest.mock("expo-secure-store", () => ({}));
+const mockStore = new Map<string, string>();
+jest.mock("expo-secure-store", () => ({
+  getItemAsync: jest.fn(async (k: string) => mockStore.get(k) ?? null),
+  setItemAsync: jest.fn(async (k: string, v: string) => void mockStore.set(k, v)),
+  deleteItemAsync: jest.fn(async (k: string) => void mockStore.delete(k)),
+}));
+const { Alert } = require("react-native");
 
 const crewsRow = (over: Record<string, unknown> = {}) => ({
   id: "crew-1", name: "Night Cruisers", description: null, avatar_path: null, owner_id: "user-1", role: "owner", link_code: "LINKCODE12345678", selected: true,
@@ -12,6 +19,8 @@ const crewsRow = (over: Record<string, unknown> = {}) => ({
   ],
   ...over,
 });
+
+beforeEach(() => pendingInvite.set(null));
 
 async function mount(backend: ReturnType<typeof makeBackend>) {
   const shell = makeShell(backend);
@@ -201,5 +210,84 @@ describe("signed in", () => {
     await screen.findByText("Night Cruisers");
     expect(screen.queryAllByText("Board").length).toBe(0);
     expect(screen.getAllByText("Map").length).toBeGreaterThan(0);
+  });
+});
+
+
+describe("password reset links", () => {
+  const link = "rdvgarage://reset#access_token=a.b.c&refresh_token=r1&type=recovery";
+
+  beforeEach(() => {
+    mockStore.clear();
+    jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
+  });
+
+  it("ignores a reset link this phone never asked for, and does not start a session from it", async () => {
+    const backend = makeBackend(null);
+    const shell = await mount(backend);
+    await screen.findByText("I have an invite");
+    await act(async () => shell.dispatchLink(link));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Reset link not requested here", expect.any(String)));
+    expect(backend.auth.startRecovery).not.toHaveBeenCalled();
+  });
+
+  it("accepts the link after a reset was requested here, then opens the new password screen", async () => {
+    const backend = makeBackend("user-1", { "accounts.my_profile": () => [profileRow()], "crews.list_my_crews": () => [] });
+    const shell = await mount(backend);
+    await screen.findByText("No crews yet");
+    mockStore.set("rdv.reset.requested", String(Date.now()));
+    await act(async () => shell.dispatchLink(link));
+    await waitFor(() => expect(backend.auth.startRecovery).toHaveBeenCalledWith("a.b.c", "r1"));
+    expect(await screen.findByText("Choose a new password")).toBeTruthy();
+  });
+
+  it("does not accept a stale request", async () => {
+    const backend = makeBackend(null);
+    const shell = await mount(backend);
+    await screen.findByText("I have an invite");
+    mockStore.set("rdv.reset.requested", String(Date.now() - 2 * 60 * 60 * 1000));
+    await act(async () => shell.dispatchLink(link));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalled());
+    expect(backend.auth.startRecovery).not.toHaveBeenCalled();
+  });
+
+  it("tells the person when their other devices could not be signed out", async () => {
+    const { AppError } = require("@rdv/core");
+    const backend = makeBackend("user-1", { "accounts.my_profile": () => [profileRow()], "crews.list_my_crews": () => [] });
+    (backend.auth.completePasswordReset as jest.Mock).mockRejectedValueOnce(new AppError("revoke_failed"));
+    const shell = await mount(backend);
+    await screen.findByText("No crews yet");
+    mockStore.set("rdv.reset.requested", String(Date.now()));
+    await act(async () => shell.dispatchLink(link));
+    const field = await screen.findByLabelText("New password").catch(() => null);
+    void field;
+    await fireEvent.changeText(await screen.findByDisplayValue(""), "a-long-enough-pass");
+    await fireEvent.press(await screen.findByText("Set password"));
+    expect(await screen.findByText(/couldn't sign out your other devices/i)).toBeTruthy();
+    expect(screen.getByText("Password updated.")).toBeTruthy();
+  });
+});
+
+describe("leaderboard crew switching", () => {
+  it("never shows another crew's rows after switching", async () => {
+    let releaseA!: (rows: unknown[]) => void;
+    const backend = makeBackend("user-1", {
+      "accounts.my_profile": () => [profileRow()],
+      "crews.list_my_crews": () => [crewsRow({ id: "crew-a", name: "Alpha" }), crewsRow({ id: "crew-b", name: "Bravo" })],
+      "leaderboard.weekly_top_speed": (args: any) =>
+        args.p_crew === "crew-a"
+          ? new Promise((resolve) => (releaseA = resolve))
+          : [{ rank: 1, user_id: "u2", handle: "bravodriver", avatar_path: null, top_speed_kmh: 150, set_on: "2025-10-08" }],
+    });
+    await mount(backend);
+    await screen.findByText("Alpha");
+    await fireEvent.press(screen.getAllByText("Board")[0]!);
+    await screen.findByText("Top speed");
+    await fireEvent.press(await screen.findByTestId("board-crew-Bravo"));
+    expect(await screen.findByText("@bravodriver")).toBeTruthy();
+    // Alpha's slow answer arrives last and must be ignored.
+    await act(async () => releaseA([{ rank: 1, user_id: "u9", handle: "alphadriver", avatar_path: null, top_speed_kmh: 200, set_on: "2025-10-08" }]));
+    expect(screen.queryByText("@alphadriver")).toBeNull();
+    expect(screen.getByText("@bravodriver")).toBeTruthy();
   });
 });

@@ -105,6 +105,28 @@ export class LiveEngine {
     void this.maybeTick(this.deps.now());
   }
 
+  // A parked car stops producing location fixes, so nothing would be broadcast. Called on a short timer: when the
+  // member is not moving and the stationary interval has passed, send the last known position again with a fresh timestamp.
+  rebroadcast(now: number): void {
+    if (!this.sessionId || !this.lastFix || this.moving) return;
+    if (now - this.lastBroadcast < STATIONARY_BROADCAST_MS) return;
+    this.lastBroadcast = now;
+    const f = this.lastFix;
+    for (const crewId of this.crewIds) {
+      this.deps.broadcast(crewId, "pos", { user_id: this.deps.userId, lat: f.lat, lng: f.lng, heading: f.heading, ts: now });
+    }
+    this.deps.publishSelf({ lat: f.lat, lng: f.lng, heading: f.heading, ts: now, crewIds: this.crewIds });
+  }
+
+  // Stop sharing with crews the person is no longer in. Returns the crews that remain.
+  dropCrews(ids: string[]): string[] {
+    for (const crewId of this.crewIds) {
+      if (ids.includes(crewId)) this.deps.broadcast(crewId, "stop", { user_id: this.deps.userId, ts: this.deps.now() });
+    }
+    this.crewIds = this.crewIds.filter((id) => !ids.includes(id));
+    return this.crewIds;
+  }
+
   // Called by a timer as well as from fixes, so a throttled timer in the background cannot stall the session.
   async maybeTick(now: number): Promise<void> {
     if (!this.sessionId || now - this.lastTick < TICK_MS) return;
@@ -137,10 +159,17 @@ export class LiveEngine {
 
   // The server ended the session (for example after a long signal loss). Start a new one for the same crews.
   private async restart(): Promise<void> {
-    if (this.restarting || !this.sessionId) return;
+    const before = this.sessionId;
+    if (this.restarting || !before) return;
     this.restarting = true;
     try {
-      this.sessionId = await this.deps.startSession(this.crewIds);
+      const next = await this.deps.startSession(this.crewIds);
+      if (this.sessionId !== before) {
+        // Stopped (or replaced) while the request was in flight: close the new session instead of leaking it.
+        await this.deps.endSession(next).catch(() => undefined);
+        return;
+      }
+      this.sessionId = next;
     } catch (error) {
       this.deps.onError?.(error);
     } finally {

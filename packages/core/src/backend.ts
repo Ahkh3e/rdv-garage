@@ -79,8 +79,10 @@ export function createBackend(config: AppConfig, secureStore: KeyValueStore): Ba
       if (newPassword.length < 8) throw new AppError("password_too_short");
       const { error } = await client.auth.updateUser({ password: newPassword });
       if (error) throw toAppError(error);
-      // Supabase does not sign out other devices on a reset, so do it here.
-      await client.schema("accounts").rpc("revoke_other_sessions");
+      // Supabase does not sign out other devices on a reset, so do it here. If that fails, say so: the password
+      // is changed but other devices may still be signed in.
+      const revoked = await client.schema("accounts").rpc("revoke_other_sessions");
+      if (revoked.error) throw new AppError("revoke_failed");
     },
     async changePassword(current, next) {
       const { data, error } = await client.functions.invoke<any>("change-password", { body: { current, next } });

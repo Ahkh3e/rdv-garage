@@ -19,6 +19,7 @@
     ".": "./src/index.ts",
     "./engine": "./src/engine.ts",
     "./hub": "./src/hub.ts",
-    "./receiver": "./src/receiver.ts"
+    "./receiver": "./src/receiver.ts",
+    "./controller": "./src/controller.ts"
   }
 }

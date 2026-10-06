@@ -87,3 +87,13 @@ describe("routes", () => {
     for (let i = 0; i < 100; i++) expect(r()).toBeGreaterThanOrEqual(0);
   });
 });
+
+import { assertSyntheticCrewOwner } from "./guard";
+
+describe("synthetic crew owner guard", () => {
+  it("allows only synthetic owners in production", () => {
+    expect(() => assertSyntheticCrewOwner(base, false)).toThrow(GuardError);
+    expect(() => assertSyntheticCrewOwner(base, true)).not.toThrow();
+    expect(() => assertSyntheticCrewOwner(dev, false)).not.toThrow();
+  });
+});

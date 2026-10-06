@@ -35,6 +35,13 @@ export function assertInviterAllowed(config: OpsConfig, inviterIsSynthetic: bool
   }
 }
 
+// In production a synthetic crew may only be owned by a synthetic user.
+export function assertSyntheticCrewOwner(config: OpsConfig, ownerIsSynthetic: boolean): void {
+  if (config.environment === "production" && !ownerIsSynthetic) {
+    throw new GuardError("In production, a synthetic crew must be owned by a synthetic user.");
+  }
+}
+
 export function assertCrewAddAllowed(config: OpsConfig, crewOwnerIsSynthetic: boolean, userIsSynthetic: boolean): void {
   if (config.environment === "production" && userIsSynthetic && !crewOwnerIsSynthetic) {
     throw new GuardError("In production, synthetic users cannot be added to a crew owned by a real user.");

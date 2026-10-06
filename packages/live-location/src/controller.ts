@@ -11,10 +11,18 @@ export interface LiveController {
   liveCrews(): CrewId[];
 }
 
+// Everything that belongs to one live run, so stopping one run can never release another run's channels.
+interface Run {
+  engine: LiveEngine;
+  releases: Map<CrewId, () => void>;
+  timers: ReturnType<typeof setInterval>[];
+}
+
+const REBROADCAST_CHECK_MS = 5000;
+
 export function createController(shell: Shell, hub: ChannelHub): LiveController {
-  let engine: LiveEngine | null = null;
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let releases: (() => void)[] = [];
+  let run: Run | null = null;
+  let starting = false;
 
   const build = (userId: string): LiveEngine =>
     new LiveEngine({
@@ -22,10 +30,8 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
       now: () => Date.now(),
       weekOf: (ts) => torontoWeekStart(ts),
       startSession: (crewIds) => shell.backend.rpc<string>("live", "start_session", { p_crew_ids: crewIds, p_platform: Platform.OS }),
-      checkpoint: async (sessionId, speed, dist) => {
-        const week = await shell.backend.rpc<string>("live", "checkpoint_session", { p_session: sessionId, p_max_speed_kmh: speed, p_distance_m: dist });
-        return week;
-      },
+      checkpoint: async (sessionId, speed, dist) =>
+        shell.backend.rpc<string>("live", "checkpoint_session", { p_session: sessionId, p_max_speed_kmh: speed, p_distance_m: dist }),
       endSession: async (sessionId) => void (await shell.backend.rpc("live", "end_session", { p_session: sessionId })),
       broadcast: (crewId, event, payload) => hub.send(crewId, event, payload),
       publishSelf: (position) => {
@@ -36,49 +42,58 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
     });
 
   async function stop() {
-    const current = engine;
+    const current = run;
     if (!current) return;
-    engine = null;
+    run = null;
     setFixSink(null);
-    if (timer) clearInterval(timer);
-    timer = null;
-    const sessionId = current.sessionId;
-    for (const crewId of current.crewIds) hub.untrack(crewId);
+    current.timers.forEach((t) => clearInterval(t));
+    const { engine } = current;
+    const sessionId = engine.sessionId;
+    for (const crewId of engine.crewIds) hub.untrack(crewId);
     await stopUpdates().catch(() => undefined);
-    await current.stop();
-    releases.forEach((release) => release());
-    releases = [];
-    shell.live.set({ live: false, sessionId: null, crewIds: [] });
+    await engine.stop();
+    current.releases.forEach((release) => release());
+    current.releases.clear();
+    // Only reset shared state if no newer run has started in the meantime.
+    if (!run) shell.live.set({ live: false, sessionId: null, crewIds: [] });
     if (sessionId) shell.events.emit({ type: "session.ended", sessionId });
   }
 
   async function goLive(crewIds: CrewId[]): Promise<PermissionResult> {
     const session = shell.session.get();
-    if (session.status !== "signedIn" || engine) return "denied";
-    const permission = await ensureLocationPermission();
-    if (permission !== "ok") return permission;
-
-    const next = build(session.userId);
-    engine = next;
-    // Join the crew channels first so the first positions are not dropped.
-    releases = crewIds.map((crewId) => hub.acquire(crewId));
+    if (session.status !== "signedIn" || run || starting) return "denied";
+    starting = true;
     try {
-      const sessionId = await next.start(crewIds);
-      const names = shell.crewContext.store.get().crews.filter((c) => crewIds.includes(c.id)).map((c) => c.name);
-      setFixSink((fix: Fix) => next.onFix(fix));
-      await startUpdates(names);
-      timer = setInterval(() => void next.maybeTick(Date.now()), TICK_MS);
-      for (const crewId of crewIds) hub.track(crewId, { user_id: session.userId, handle: session.profile.handle });
-      shell.live.set({ live: true, sessionId, crewIds });
-      shell.events.emit({ type: "session.started", sessionId, crewIds });
-      return "ok";
-    } catch (error) {
-      engine = null;
-      releases.forEach((release) => release());
-      releases = [];
-      setFixSink(null);
-      await stopUpdates().catch(() => undefined);
-      throw error;
+      const permission = await ensureLocationPermission();
+      if (permission !== "ok") return permission;
+      if (shell.session.get().status !== "signedIn") return "denied";
+
+      const engine = build(session.userId);
+      const releases = new Map<CrewId, () => void>(crewIds.map((id) => [id, hub.acquire(id)]));
+      const current: Run = { engine, releases, timers: [] };
+      try {
+        const sessionId = await engine.start(crewIds);
+        const names = shell.crewContext.store.get().crews.filter((c) => crewIds.includes(c.id)).map((c) => c.name);
+        setFixSink((fix: Fix) => engine.onFix(fix));
+        await startUpdates(names);
+        current.timers.push(setInterval(() => void engine.maybeTick(Date.now()), TICK_MS));
+        current.timers.push(setInterval(() => engine.rebroadcast(Date.now()), REBROADCAST_CHECK_MS));
+        for (const crewId of crewIds) hub.track(crewId, { user_id: session.userId, handle: session.profile.handle });
+        run = current;
+        shell.live.set({ live: true, sessionId, crewIds });
+        shell.events.emit({ type: "session.started", sessionId, crewIds });
+        return "ok";
+      } catch (error) {
+        // Do not leave a half-started session open on the server.
+        setFixSink(null);
+        current.timers.forEach((t) => clearInterval(t));
+        await stopUpdates().catch(() => undefined);
+        await engine.stop();
+        releases.forEach((release) => release());
+        throw error;
+      }
+    } finally {
+      starting = false;
     }
   }
 
@@ -88,12 +103,24 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
   shell.session.subscribe(() => {
     if (shell.session.get().status !== "signedIn") void stop();
   });
-  // Leaving or being removed from a crew you are live to drops it from the session on the server; stop sharing locally too.
+
+  // Leaving or being removed from a crew you are live to must stop sharing with that crew straight away.
   shell.crewContext.store.subscribe(() => {
-    if (!engine) return;
-    const ids = new Set(shell.crewContext.store.get().crews.map((c) => c.id));
-    if (shell.crewContext.store.get().loaded && engine.crewIds.every((id) => !ids.has(id))) void stop();
+    const current = run;
+    const crewState = shell.crewContext.store.get();
+    if (!current || !crewState.loaded) return;
+    const stillIn = new Set(crewState.crews.map((c) => c.id));
+    const gone = current.engine.crewIds.filter((id) => !stillIn.has(id));
+    if (gone.length === 0) return;
+    for (const id of gone) {
+      hub.untrack(id);
+      current.releases.get(id)?.();
+      current.releases.delete(id);
+    }
+    const left = current.engine.dropCrews(gone);
+    if (left.length === 0) void stop();
+    else shell.live.set({ live: true, sessionId: current.engine.sessionId, crewIds: left });
   });
 
-  return { goLive, stop, liveCrews: () => engine?.crewIds ?? [] };
+  return { goLive, stop, liveCrews: () => run?.engine.crewIds ?? [] };
 }

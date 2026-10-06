@@ -190,7 +190,7 @@ describe("app backend: crews, avatars, live", () => {
       backend: wb,
       session: { get: () => ({ status: "signedIn" }), subscribe: () => () => undefined },
       live: { subscribe: () => () => undefined },
-      crewContext: { store: { get: () => ({ selected: [crew!.id] }), subscribe: () => () => undefined } },
+      crewContext: { store: { get: () => ({ selected: [crew!.id], crews: [{ id: crew!.id, members: [{ userId: db.userId() }, { userId: wb.userId() }] }] }), subscribe: () => () => undefined } },
       locationStream: { publish: (p: any) => watcherPositions.set((s) => ({ ...s, [p.userId]: p })), remove: (id: string) => watcherPositions.set(({ [id]: _x, ...rest }) => rest), clear: () => watcherPositions.set({}) },
     };
     const watcherHub = new ChannelHub(wb);

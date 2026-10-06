@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { Avatar, Card, Disclaimer, Empty, Screen, Text, colors, crewStyle, formatDaySet, messageFor, radii, useCrewState, useSession, useShell } from "@rdv/core";
@@ -28,15 +28,22 @@ export function Board() {
     if (!crewId || !crews.some((c) => c.id === crewId)) setCrewId(crews[0]?.id ?? null);
   }, [crews.map((c) => c.id).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const latest = useRef(0);
   const load = useCallback(async () => {
     if (!crewId) return setRows(null);
+    const ticket = ++latest.current;
     try {
-      setRows(await shell.backend.rpc<Row[]>("leaderboard", "weekly_top_speed", { p_crew: crewId }));
-      setError(null);
+      const result = await shell.backend.rpc<Row[]>("leaderboard", "weekly_top_speed", { p_crew: crewId });
+      // A slower answer for a crew the person already switched away from must not overwrite the current board.
+      if (ticket === latest.current) {
+        setRows(result);
+        setError(null);
+      }
     } catch (e) {
-      setError(messageFor(e));
+      if (ticket === latest.current) setError(messageFor(e));
     }
   }, [shell, crewId]);
+  useEffect(() => setRows(null), [crewId]);
 
   useFocusEffect(
     useCallback(() => {
