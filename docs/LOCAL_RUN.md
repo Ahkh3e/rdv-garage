@@ -33,6 +33,7 @@ Local link note: the simulators open `rdvgarage://` links directly. Universal li
 ## 3. Simulating a drive
 
 - Simulator menu, Features, Location: City Run, Freeway Drive, Custom Location. Or `xcrun simctl location <udid> run city-run` and `xcrun simctl location <udid> set 43.6532,-79.3832`.
+- A route at a chosen speed: `xcrun simctl location <udid> start --speed=19 <lat,lng> <lat,lng> ...` (metres per second; 19 is about 68 km/h). The follow camera and the weekly top speed both respond to it.
 - Fake members: `./ops/bin/rdv-ops.mjs sim live --crew <crew id> --users 3 --duration 180 --route highway`.
 - Simulator background location is limited, so lock-screen behavior is a device test, not a simulator one.
 
@@ -93,5 +94,6 @@ Real background location (screen locked, battery), the Android app, push, store 
 
 - Pod or Swift version errors: confirm the Xcode version and run `xcode-select -p`.
 - Metro cannot reach the backend from the simulator: use `127.0.0.1` (shared with the Mac); a phone on Wi-Fi needs the Mac's LAN address.
-- Map blank on iOS: Apple Maps needs no key; check the simulator has network access.
+- Map blank on iOS: the map is MapLibre with OpenFreeMap tiles and needs no key; check the simulator has network access.
+- JS changes do not show up on the simulator: restart Metro with `npx expo start --dev-client --clear`, then reopen `app.rdvgarage.mobile://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081` on each simulator. Native changes (a new native library) need a rebuild.
 - Last resort for seeing screens without a native build: a browser preview target with a stubbed map (not the real app).
