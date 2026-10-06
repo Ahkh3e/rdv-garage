@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import MapView, { PROVIDER_GOOGLE } from "react-native-maps";
-import { Chip, Slot, Text, colors, darkMapStyle, radii, useCrewState, usePositions, useSession, useShell } from "@rdv/core";
-import { MemberMarker } from "./MemberMarker";
+import { Camera, Map, ViewAnnotation, type CameraRef } from "@maplibre/maplibre-react-native";
+import { Chip, Slot, Text, colors, radii, useCrewState, usePositions, useSession, useShell } from "@rdv/core";
+import { MemberMarker, SelfMarker } from "./MemberMarker";
+import { FOLLOW_CAMERA, rdvNightStyle } from "./style";
 
-const TORONTO = { latitude: 43.6532, longitude: -79.3832, latitudeDelta: 0.08, longitudeDelta: 0.08 };
+const TORONTO: [number, number] = [-79.3832, 43.6532];
 const FADE_AFTER_MS = 45000;
+const BOTTOM_PADDING = 170;
 
 interface Me {
   lat: number;
@@ -22,7 +24,8 @@ export function MapScreen() {
   const session = useSession();
   const crewState = useCrewState();
   const positions = usePositions();
-  const mapRef = useRef<MapView>(null);
+  const camera = useRef<CameraRef>(null);
+  const lastHeading = useRef(0);
   const [follow, setFollow] = useState(true);
   const [me, setMe] = useState<Me | null>(null);
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied">("unknown");
@@ -44,7 +47,8 @@ export function MapScreen() {
       if (result.status !== "granted") return setPermission("denied");
       setPermission("granted");
       sub = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, (loc) => {
-        setMe({ lat: loc.coords.latitude, lng: loc.coords.longitude, heading: loc.coords.heading !== null && loc.coords.heading >= 0 && (loc.coords.speed ?? 0) > 2 ? loc.coords.heading : null });
+        const moving = (loc.coords.speed ?? 0) > 2 && loc.coords.heading !== null && loc.coords.heading >= 0;
+        setMe({ lat: loc.coords.latitude, lng: loc.coords.longitude, heading: moving ? loc.coords.heading : null });
       });
     })();
     return () => {
@@ -53,13 +57,23 @@ export function MapScreen() {
     };
   }, [focused]);
 
+  // Follow mode, Waze style: tilted, close behind you, turning with the road. The camera keeps your last heading when you stop.
   useEffect(() => {
-    if (!follow || !me || !mapRef.current) return;
-    mapRef.current.animateCamera({ center: { latitude: me.lat, longitude: me.lng }, ...(me.heading !== null ? { heading: me.heading } : {}), zoom: 16 }, { duration: 600 });
+    if (!follow || !me || !camera.current) return;
+    if (me.heading !== null) lastHeading.current = me.heading;
+    camera.current.easeTo({
+      center: [me.lng, me.lat],
+      zoom: FOLLOW_CAMERA.zoom,
+      pitch: FOLLOW_CAMERA.pitch,
+      bearing: lastHeading.current,
+      padding: { top: 0, right: 0, bottom: BOTTOM_PADDING, left: 0 },
+      duration: 700,
+      easing: "linear",
+    });
   }, [me, follow]);
 
   const lookup = useMemo(() => {
-    const map = new Map<string, { handle: string; avatarPath: string | null; styleIndex: number }>();
+    const map = new globalThis.Map<string, { handle: string; avatarPath: string | null; styleIndex: number }>();
     for (const crew of crewState.crews) {
       for (const member of crew.members) {
         if (!map.has(member.userId) || crewState.selected.includes(crew.id)) {
@@ -74,32 +88,37 @@ export function MapScreen() {
   const others = Object.values(positions).filter(
     (p) => p.userId !== myId && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
-  const recenter = useCallback(() => setFollow(true), []);
-  const myProfile = session.status === "signedIn" ? session.profile : null;
 
   return (
     <View style={styles.root}>
-      <MapView
-        ref={mapRef}
+      <Map
+        testID="map-view"
         style={StyleSheet.absoluteFill}
-        provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
-        userInterfaceStyle="dark"
-        customMapStyle={darkMapStyle}
-        initialRegion={TORONTO}
-        showsCompass={false}
-        showsPointsOfInterests={false}
-        toolbarEnabled={false}
-        onPanDrag={() => setFollow(false)}
-        mapPadding={{ top: 0, right: 0, bottom: 90, left: 0 }}
+        mapStyle={rdvNightStyle}
+        compass={false}
+        logo={false}
+        attribution
+        attributionPosition={{ bottom: 100, left: 8 }}
+        onRegionDidChange={(event) => {
+          // Dragging or pinching the map by hand ends follow mode; the recenter button brings it back.
+          if (event.nativeEvent.userInteraction) setFollow(false);
+        }}
       >
-        {me && myProfile ? (
-          <MemberMarker self userId="me" handle={myProfile.handle} avatarPath={myProfile.avatarPath} lat={me.lat} lng={me.lng} styleIndex={0} stale={false} />
+        <Camera ref={camera} initialViewState={{ center: TORONTO, zoom: 11.5 }} />
+        {me ? (
+          <ViewAnnotation id="me" lngLat={[me.lng, me.lat]} anchor="center">
+            <SelfMarker following={follow} />
+          </ViewAnnotation>
         ) : null}
         {others.map((p) => {
           const info = lookup.get(p.userId)!;
-          return <MemberMarker key={p.userId} userId={p.userId} handle={info.handle} avatarPath={info.avatarPath} lat={p.lat} lng={p.lng} styleIndex={info.styleIndex} stale={now - p.ts > FADE_AFTER_MS} />;
+          return (
+            <ViewAnnotation key={p.userId} id={p.userId} lngLat={[p.lng, p.lat]} anchor="center">
+              <MemberMarker handle={info.handle} avatarPath={info.avatarPath} styleIndex={info.styleIndex} stale={now - p.ts > FADE_AFTER_MS} />
+            </ViewAnnotation>
+          );
         })}
-      </MapView>
+      </Map>
 
       <View style={styles.top} pointerEvents="box-none">
         <Chip label={others.length === 0 ? "No one else live" : `${others.length} live`} selected={others.length > 0} />
@@ -117,7 +136,7 @@ export function MapScreen() {
       ) : null}
 
       {!follow ? (
-        <Pressable testID="map-recenter" accessibilityRole="button" accessibilityLabel="Recenter" onPress={recenter} style={styles.recenter}>
+        <Pressable testID="map-recenter" accessibilityRole="button" accessibilityLabel="Recenter" onPress={() => setFollow(true)} style={styles.recenter}>
           <Ionicons name="navigate" size={22} color={colors.text} />
         </Pressable>
       ) : null}

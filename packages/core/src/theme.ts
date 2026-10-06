@@ -37,17 +37,3 @@ export const type = {
 } as const;
 
 export const motion = { fast: 150, normal: 250 } as const;
-
-// Dark map style for Google Maps on Android. Apple Maps uses the system dark appearance.
-export const darkMapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#101013" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#8C8C96" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#0A0A0B" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#2A2A31" }] },
-  { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", stylers: [{ visibility: "off" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1C1C21" }] },
-  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#24242A" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2E2E36" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#07070A" }] },
-];

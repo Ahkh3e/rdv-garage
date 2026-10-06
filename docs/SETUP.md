@@ -11,7 +11,6 @@ The code is complete for 0.0.1. These are the accounts, keys, and one-time steps
 | Expo (EAS) | Cloud builds. **Needed because Expo SDK 57 requires Xcode 26.4+ and this Mac has 16.4** | Free tier |
 | Cloudflare | Hosts the link pages (Pages) and holds backups (R2) | Free tier |
 | Google Play Console | Android release (later) | One-time fee |
-| Google Cloud | A Maps SDK for Android key, only when Android ships | Free for map display |
 | A domain | Invite and reset links. A `pages.dev` address works to start but a domain is better for universal links | About $10/year |
 | An email sender (SMTP) | Confirmation and password reset emails in production. Resend, Brevo, or similar | Free tier |
 
@@ -36,7 +35,7 @@ The code is complete for 0.0.1. These are the accounts, keys, and one-time steps
 1. Copy `apps/mobile/.env.example` to `apps/mobile/.env` and fill `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_KEY` (publishable key only), `EXPO_PUBLIC_LINK_DOMAIN`.
 2. `cd apps/mobile && npx eas-cli login && npx eas-cli init` (sets the project id), then `npx eas-cli build --profile development --platform ios`.
 3. Apple: in the Apple Developer account register the app id `app.rdvgarage.mobile` with the Associated Domains capability. EAS manages certificates for you when you log in.
-4. Android (later): set `GOOGLE_MAPS_API_KEY` as an EAS secret, then build with `--platform android`. Add the app's SHA-256 signing fingerprint to the web build (below).
+4. Android (later): build with `--platform android`. The map needs no key (MapLibre with OpenFreeMap tiles). Add the app's SHA-256 signing fingerprint to the web build (below).
 5. A development build is required. Expo Go will not work (background location, maps).
 
 ## 4. Link pages (Cloudflare Pages)
