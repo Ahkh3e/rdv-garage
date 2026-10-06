@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, Switch as RNSwitch, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { colors, radii } from "../theme";
 import { DISCLAIMER_SHORT } from "../legal";
 import { Text } from "./Text";
@@ -13,13 +13,13 @@ export function Spinner() {
   );
 }
 
-export function Empty({ title, body, action, icon = "ellipse-outline" }: { title: string; body?: string; action?: ReactNode; icon?: string }) {
+export function Empty({ title, body, action, overline }: { title: string; body?: string; action?: ReactNode; overline?: string; icon?: string }) {
   return (
     <View style={styles.empty}>
-      <Ionicons name={icon as any} size={28} color={colors.muted} />
-      <Text variant="title" style={{ textAlign: "center" }}>{title}</Text>
-      {body ? <Text muted style={{ textAlign: "center" }}>{body}</Text> : null}
-      {action}
+      {overline ? <Text variant="label" color={colors.subtle}>{overline}</Text> : null}
+      <Text variant="title">{title}</Text>
+      {body ? <Text muted style={{ maxWidth: 300 }}>{body}</Text> : null}
+      {action ? <View style={{ alignSelf: "stretch", marginTop: 16 }}>{action}</View> : null}
     </View>
   );
 }
@@ -34,9 +34,9 @@ export function Banner({ text, tone = "info" }: { text: string; tone?: "info" | 
 
 export function Chip({ label, tint, selected }: { label: string; tint?: string; selected?: boolean }) {
   return (
-    <View style={[styles.chip, selected && { backgroundColor: colors.raised, borderColor: tint ?? colors.accent }]}>
+    <View style={[styles.chip, selected && { backgroundColor: "rgba(255,255,255,0.12)", borderColor: colors.border }]}>
       {tint ? <View style={[styles.dot, { backgroundColor: tint }]} /> : null}
-      <Text variant="caption">{label}</Text>
+      <Text variant="caption" color={selected ? colors.text : colors.muted}>{label}</Text>
     </View>
   );
 }
@@ -47,9 +47,9 @@ export function Toggle({ value, onChange, accessibilityLabel }: { value: boolean
       accessibilityLabel={accessibilityLabel}
       value={value}
       onValueChange={onChange}
-      trackColor={{ false: colors.border, true: colors.accent }}
+      trackColor={{ false: "rgba(255,255,255,0.14)", true: colors.accent }}
       thumbColor="#F4F4F5"
-      ios_backgroundColor={colors.border}
+      ios_backgroundColor="rgba(255,255,255,0.14)"
     />
   );
 }
@@ -57,16 +57,16 @@ export function Toggle({ value, onChange, accessibilityLabel }: { value: boolean
 export function Disclaimer({ text = DISCLAIMER_SHORT }: { text?: string }) {
   return (
     <View style={styles.disclaimer}>
-      <Ionicons name="alert-circle-outline" size={16} color={colors.muted} style={{ marginTop: 2 }} />
-      <Text variant="caption" style={{ flex: 1, color: colors.text, opacity: 0.85 }}>{text}</Text>
+      <Feather name="info" size={16} color={colors.muted} style={{ marginTop: 2 }} />
+      <Text variant="body" style={{ flex: 1, color: colors.text, opacity: 0.9, fontSize: 14, lineHeight: 20 }}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  empty: { alignItems: "center", gap: 10, padding: 32 },
-  banner: { padding: 12, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  disclaimer: { flexDirection: "row", gap: 8, padding: 12, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  empty: { alignItems: "flex-start", gap: 8, paddingHorizontal: 4, paddingTop: 48 },
+  banner: { padding: 14, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.s1 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 6, height: 32, paddingHorizontal: 12, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.hairline, backgroundColor: "rgba(255,255,255,0.05)" },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  disclaimer: { flexDirection: "row", gap: 10, padding: 14, borderRadius: radii.md, borderCurve: "continuous", backgroundColor: colors.s1, borderWidth: 1, borderColor: colors.hairline },
 });
