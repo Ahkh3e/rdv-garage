@@ -6,7 +6,7 @@ import * as Location from "expo-location";
 import { Camera, Map, ViewAnnotation, type CameraRef } from "@maplibre/maplibre-react-native";
 import { Avatar, Chip, Slot, Text, colors, crewStyle, radii, useCrewState, usePositions, useSession } from "@rdv/core";
 import { MemberMarker, SelfMarker } from "./MemberMarker";
-import { FOLLOW_CAMERA, rdvNightStyle } from "./style";
+import { FLAT_PITCH, FOLLOW_CAMERA, rdvNightStyle, rdvNightStyleFlat } from "./style";
 
 const TORONTO: [number, number] = [-79.3832, 43.6532];
 const FADE_AFTER_MS = 45000;
@@ -33,6 +33,8 @@ export function MapScreen() {
   const zoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const followZoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const [follow, setFollow] = useState(true);
+  const [view3d, setView3d] = useState(true);
+  const pitch = useRef<number>(FOLLOW_CAMERA.pitch);
   const [me, setMe] = useState<Me | null>(null);
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied">("unknown");
   const [now, setNow] = useState(Date.now());
@@ -91,7 +93,7 @@ export function MapScreen() {
     camera.current?.easeTo({
       center: [at.lng, at.lat],
       zoom: followZoom.current,
-      pitch: FOLLOW_CAMERA.pitch,
+      pitch: pitch.current,
       bearing: lastHeading.current,
       duration,
       easing: "linear",
@@ -155,7 +157,7 @@ export function MapScreen() {
   const jumpTo = (lat: number, lng: number) => {
     setFollow(false);
     setExpanded(true);
-    camera.current?.easeTo({ center: [lng, lat], zoom: JUMP_ZOOM, pitch: 45, bearing: 0, duration: 800 });
+    camera.current?.easeTo({ center: [lng, lat], zoom: JUMP_ZOOM, pitch: view3d ? 45 : FLAT_PITCH, bearing: 0, duration: 800 });
   };
 
   const rehome = () => {
@@ -163,6 +165,13 @@ export function MapScreen() {
     setFollow(true);
     if (me) easeToMe(me, 500);
     else camera.current?.easeTo({ center: TORONTO, zoom: 11.5, pitch: 0, bearing: 0, duration: 500 });
+  };
+
+  const toggleView = () => {
+    const next = !view3d;
+    setView3d(next);
+    pitch.current = next ? FOLLOW_CAMERA.pitch : FLAT_PITCH;
+    camera.current?.setStop({ pitch: pitch.current, duration: 400, easing: "ease" });
   };
 
   const step = (delta: number) => {
@@ -191,7 +200,7 @@ export function MapScreen() {
         <Map
           testID="map-view"
           style={StyleSheet.absoluteFill}
-          mapStyle={rdvNightStyle}
+          mapStyle={view3d ? rdvNightStyle : rdvNightStyleFlat}
           compass={false}
           logo={false}
           attribution
@@ -237,6 +246,7 @@ export function MapScreen() {
               <MapButton testID="map-zoom-out" label="Zoom out" icon="remove" onPress={() => step(-1)} />
             </>
           ) : null}
+          <MapButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} text={view3d ? "2D" : "3D"} onPress={toggleView} />
           <MapButton testID="map-recenter" label="Back to my location" icon="navigate" active={follow} onPress={rehome} />
         </View>
 
@@ -301,10 +311,10 @@ export function MapScreen() {
   );
 }
 
-function MapButton({ icon, label, onPress, testID, active }: { icon: "add" | "remove" | "navigate"; label: string; onPress: () => void; testID: string; active?: boolean }) {
+function MapButton({ icon, text, label, onPress, testID, active }: { icon?: "add" | "remove" | "navigate"; text?: string; label: string; onPress: () => void; testID: string; active?: boolean }) {
   return (
     <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={[styles.button, active && { borderColor: colors.accent }]}>
-      <Ionicons name={icon} size={22} color={active ? colors.accent : colors.text} />
+      {icon ? <Ionicons name={icon} size={22} color={active ? colors.accent : colors.text} /> : <Text variant="caption" bold>{text}</Text>}
     </Pressable>
   );
 }

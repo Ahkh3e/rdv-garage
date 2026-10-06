@@ -48,7 +48,7 @@ const road = (id: string, classes: string[], color: string, width: unknown, extr
 const casing = (id: string, classes: string[], width: unknown) =>
   road(id, classes, MAP_COLORS.casing, width, { paint: { "line-color": MAP_COLORS.casing, "line-width": width, "line-opacity": 0.9 } });
 
-export const rdvNightStyle: StyleSpecification = {
+const baseStyle: StyleSpecification = {
   version: 8,
   name: "RDV Night",
   glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
@@ -132,6 +132,20 @@ export const rdvNightStyle: StyleSpecification = {
   ] as never,
 };
 
+// The same style without extruded buildings, for the flat 2D view: footprints stay visible at every close zoom.
+function flatten(style: StyleSpecification): StyleSpecification {
+  return {
+    ...style,
+    layers: style.layers
+      .filter((layer) => layer.id !== "building-3d")
+      .map((layer) => (layer.id === "building" ? ({ ...layer, maxzoom: 24 } as typeof layer) : layer)),
+  };
+}
+
+export const rdvNightStyle: StyleSpecification = baseStyle;
+export const rdvNightStyleFlat: StyleSpecification = flatten(baseStyle);
+
 // Camera used while following: tilted, close behind the car, heading up.
 export const FOLLOW_CAMERA = { zoom: 16.6, pitch: 55 } as const;
+export const FLAT_PITCH = 0;
 export const OVERVIEW_CAMERA = { zoom: 11.5, pitch: 0 } as const;
