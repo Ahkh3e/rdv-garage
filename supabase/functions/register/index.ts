@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   const admin = serviceClient();
 
   const ip = clientIp(req);
-  for (const [key, max] of [[`register:${ip}`, 20], [`register_email:${email}`, 5]] as const) {
+  for (const [key, max] of [[`register:${ip}`, 60], [`register_email:${email}`, 5]] as const) {
     const { error } = await admin.schema("accounts").rpc("rate_limit", { p_key: key, p_max: max, p_window_seconds: 3600 });
     if (error) return fail(pgCode(error), 429);
   }

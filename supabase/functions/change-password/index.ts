@@ -38,7 +38,16 @@ Deno.serve(async (req) => {
   const { error: updateError } = await admin.auth.admin.updateUserById(auth.user.id, { password: next });
   if (updateError) return fail("password_too_short");
 
-  // Sign out every other device; the caller's session stays.
-  await admin.schema("accounts").rpc("revoke_sessions_except", { p_user: auth.user.id, p_keep: sessionIdFromJwt(token) });
-  return json({ ok: true });
+  // Changing a password can end the caller's own session too. Sign in again with the new password,
+  // hand that fresh session back to the app, and sign out every other device.
+  const fresh = await anonClient().auth.signInWithPassword({ email: auth.user.email, password: next });
+  if (fresh.error || !fresh.data.session) return fail("unknown_error", 500);
+  await admin.schema("accounts").rpc("revoke_sessions_except", {
+    p_user: auth.user.id,
+    p_keep: sessionIdFromJwt(fresh.data.session.access_token),
+  });
+  return json({
+    ok: true,
+    session: { access_token: fresh.data.session.access_token, refresh_token: fresh.data.session.refresh_token },
+  });
 });

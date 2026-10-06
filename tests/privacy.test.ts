@@ -4,7 +4,7 @@ import { admin, ANON_KEY, API_URL, call, callOk, createCrew, createUser, signIn,
 
 async function selectAs(u: TestUser, schema: string, table: string, columns = "*") {
   const { data, error } = await u.client.schema(schema).from(table).select(columns);
-  return { rows: data ?? [], error: error?.message ?? null };
+  return { rows: (data ?? []) as unknown as { id: string }[], error: error?.message ?? null };
 }
 
 describe("access policies", () => {
