@@ -244,7 +244,7 @@ export function MapScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.controls, !expanded && { bottom: SHEET_OVERLAP + 12 }]} pointerEvents="box-none">
+        <View style={[styles.controls, !expanded && { bottom: SHEET_OVERLAP + 12, flexDirection: "row" }]} pointerEvents="box-none">
           {expanded ? (
             <>
               <GlassButton testID="map-zoom-in" label="Zoom in" onPress={() => step(1)}>

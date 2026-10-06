@@ -25,7 +25,7 @@ export const MAP_COLORS = {
   trunk: "#DDE9F6",
   motorway: "#FFFFFF",
   rail: "#2A3442",
-  label: "#9FB2C8",
+  label: "rgba(255,255,255,0.55)",
   labelStrong: "#E6EEF7",
   labelWater: "#5F87B0",
   halo: "#0A0E14",
@@ -84,7 +84,7 @@ const baseStyle: StyleSpecification = {
         "fill-extrusion-color": MAP_COLORS.buildingTop,
         "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
         "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-        "fill-extrusion-opacity": 0.75,
+        "fill-extrusion-opacity": 0.5,
       },
     },
     {
@@ -108,7 +108,7 @@ const baseStyle: StyleSpecification = {
       id: "road-name", type: "symbol", source: "openmaptiles", "source-layer": "transportation_name", minzoom: 13,
       layout: {
         "symbol-placement": "line", "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]], "text-font": FONT,
-        "text-size": w([13, 10], [18, 13]), "text-letter-spacing": 0.05,
+        "text-size": w([13, 9], [18, 11]), "text-letter-spacing": 0.05,
       },
       paint: { "text-color": MAP_COLORS.label, "text-halo-color": MAP_COLORS.halo, "text-halo-width": 1.4 },
     },

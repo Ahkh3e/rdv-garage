@@ -44,7 +44,7 @@ export function CrewsHome({ navigation }: { navigation: any }) {
     <Screen refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await refresh(); setRefreshing(false); }}>
       <View style={{ gap: 4 }}>
         <Text variant="large">Crews</Text>
-        <Text variant="body" muted>The map and the board show the crews you switch on.</Text>
+        <Text variant="body" muted>Shown on the map and the board.</Text>
       </View>
       {error ? <Text color={colors.danger}>{error}</Text> : null}
       {state.loaded && state.crews.length === 0 ? (
@@ -68,7 +68,9 @@ export function CrewsHome({ navigation }: { navigation: any }) {
                       </Text>
                     </View>
                     {liveCount > 0 ? <PulseDot size={6} halo={3} /> : null}
-                    <Toggle accessibilityLabel={`Show ${crew.name}`} value={crew.selected} onChange={(v) => toggle(crew.id, v)} />
+                    <View style={{ justifyContent: "center", alignSelf: "stretch" }}>
+                      <Toggle accessibilityLabel={`Show ${crew.name}`} value={crew.selected} onChange={(v) => toggle(crew.id, v)} />
+                    </View>
                   </Pressable>
                 </View>
               );
