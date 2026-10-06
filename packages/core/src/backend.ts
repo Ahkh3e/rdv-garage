@@ -175,7 +175,12 @@ export function createBackend(config: AppConfig, secureStore: KeyValueStore): Ba
         currentUserId = data.session?.user.id ?? null;
         fn(currentUserId);
       });
-      const { data } = client.auth.onAuthStateChange((_event, session) => fn(session?.user.id ?? null));
+      // Never call back into Supabase from inside this callback: the client holds its auth lock while it runs, and the
+      // handler makes requests of its own. Defer the work and do not return its promise.
+      const { data } = client.auth.onAuthStateChange((_event, session) => {
+        const id = session?.user.id ?? null;
+        setTimeout(() => void fn(id), 0);
+      });
       return () => data.subscription.unsubscribe();
     },
   };

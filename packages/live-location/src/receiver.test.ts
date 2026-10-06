@@ -12,7 +12,9 @@ function setup(crews: { id: string; members: { userId: string }[] }[]) {
     },
   };
   const positions = createStore<Record<string, any>>({});
+  const asked: unknown[] = [];
   const shell: any = {
+    events: { emit: (e: unknown) => void asked.push(e) },
     backend: { userId: () => "me" },
     session: { get: () => ({ status: "signedIn" }), subscribe: () => () => undefined },
     live: { subscribe: () => () => undefined },
@@ -24,7 +26,7 @@ function setup(crews: { id: string; members: { userId: string }[] }[]) {
     },
   };
   const stop = startReceiver(shell, hub, () => []);
-  return { listeners, positions, stop };
+  return { listeners, positions, stop, asked };
 }
 
 describe("receiver", () => {
@@ -49,6 +51,22 @@ describe("receiver", () => {
     listeners.get("a")!("pos", { user_id: "me", lat: 1, lng: 2, ts: Date.now() });
     expect(Object.keys(positions.get())).toEqual([]);
     listeners.get("a")!("stop", { user_id: "stranger" });
+    stop();
+  });
+
+  it("stamps positions with the time they arrived, not the sender's clock", () => {
+    const { listeners, positions, stop } = setup([{ id: "a", members: [{ userId: "u1" }] }]);
+    const before = Date.now();
+    listeners.get("a")!("pos", { user_id: "u1", lat: 1, lng: 2, ts: 5 });
+    expect(positions.get().u1.ts).toBeGreaterThanOrEqual(before);
+    stop();
+  });
+
+  it("asks for a fresh crew list when someone unknown shows up, at most every ten seconds", () => {
+    const { listeners, asked, stop } = setup([{ id: "a", members: [{ userId: "u1" }] }]);
+    listeners.get("a")!("pos", { user_id: "newjoiner", lat: 1, lng: 2, ts: Date.now() });
+    listeners.get("a")!("pos", { user_id: "newjoiner", lat: 1, lng: 2, ts: Date.now() });
+    expect(asked).toEqual([{ type: "crews.refresh" }]);
     stop();
   });
 

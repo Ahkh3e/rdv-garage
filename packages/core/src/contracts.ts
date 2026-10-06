@@ -13,6 +13,7 @@ export interface Profile {
 
 export type SessionState =
   | { status: "loading" }
+  | { status: "offline" }
   | { status: "signedOut"; notice?: "suspended" | "deleted" }
   | { status: "signedIn"; userId: string; profile: Profile };
 

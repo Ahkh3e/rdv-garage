@@ -3,7 +3,8 @@ export type AppEvent =
   | { type: "session.ended"; sessionId: string }
   | { type: "crew.selected"; crewIds: string[] }
   | { type: "account.suspended" }
-  | { type: "account.deleted" };
+  | { type: "account.deleted" }
+  | { type: "crews.refresh" };
 
 export type Unsubscribe = () => void;
 

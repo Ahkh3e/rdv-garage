@@ -13,7 +13,13 @@ export function setFixSink(next: Sink | null) {
 
 // Must run at import time so the task exists when the OS wakes the app for a location update.
 TaskManager.defineTask(LOCATION_TASK, async ({ data, error }: TaskManager.TaskManagerTaskBody<{ locations?: Location.LocationObject[] }>) => {
-  if (error || !data?.locations || !sink) return;
+  if (error || !data?.locations) return;
+  if (!sink) {
+    // The OS woke the app (or Android restarted it) with no live session in memory. Nothing would be shared, so do not
+    // leave the "RDV Garage is live" notification running: stop the updates.
+    await stopUpdates().catch(() => undefined);
+    return;
+  }
   for (const location of data.locations) {
     sink({
       lat: location.coords.latitude,

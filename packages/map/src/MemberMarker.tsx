@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import { Marker } from "react-native-maps";
 import { Text, colors, crewStyle, fonts, useAvatarUrl } from "@rdv/core";
@@ -36,6 +36,14 @@ function shapeStyle(index: number) {
 function MemberMarkerBase({ userId, handle, avatarPath, lat, lng, styleIndex, stale, self }: Props) {
   const url = useAvatarUrl(avatarPath);
   const [tracking, setTracking] = useState(true);
+  const [rev, setRev] = useState(0);
+  // Keep re-snapshotting the marker while its picture or look is changing, then stop so it costs nothing.
+  const stateKey = `${url ?? ""}|${stale}|${styleIndex}`;
+  useEffect(() => {
+    setTracking(true);
+    const timer = setTimeout(() => setTracking(false), 600);
+    return () => clearTimeout(timer);
+  }, [stateKey, rev]);
   const tint = self ? colors.accent : crewStyle(styleIndex).tint;
   const diamond = crewStyle(styleIndex).shape === "diamond" && !self;
   const shape = self ? { borderRadius: SIZE / 2 } : shapeStyle(styleIndex);
@@ -51,10 +59,10 @@ function MemberMarkerBase({ userId, handle, avatarPath, lat, lng, styleIndex, st
         <View style={[styles.ring, { borderColor: tint, width: SIZE, height: SIZE }, shape]}>
           <View style={diamond ? { transform: [{ rotate: "-45deg" }] } : undefined}>
             {url ? (
-              <Image source={{ uri: url }} style={styles.photo} onLoad={() => setTracking(false)} />
+              <Image source={{ uri: url }} style={styles.photo} onLoad={() => setRev((r) => r + 1)} />
             ) : (
               <View style={[styles.photo, styles.initial]}>
-                <Text bold muted onLayout={() => setTimeout(() => setTracking(false), 300)}>{handle.slice(0, 1).toUpperCase()}</Text>
+                <Text bold muted>{handle.slice(0, 1).toUpperCase()}</Text>
               </View>
             )}
           </View>

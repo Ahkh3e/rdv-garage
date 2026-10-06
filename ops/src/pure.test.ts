@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -38,6 +38,24 @@ describe("config", () => {
     expect(loadConfig({ ...env, OPS_ENVIRONMENT: "production", OPS_PROJECT_NAME: "rdv-prod" } as never).projectName).toBe("rdv-prod");
     expect(loadConfig({ ...env, OPS_ENVIRONMENT: "test" } as never).projectName).toBe("test");
   });
+  it("lets /etc and an explicit file win over a stray file in the current directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cfg-"));
+    const write = (name: string, body: string) => {
+      const p = join(dir, name);
+      writeFileSync(p, body);
+      return p;
+    };
+    const cwdFile = write("cwd.env", "OPS_ENVIRONMENT=development\nSUPABASE_URL=http://dev\n");
+    const etcFile = write("etc.env", "OPS_ENVIRONMENT=production\nOPS_PROJECT_NAME=rdv-prod\nSUPABASE_URL=https://prod\nSUPABASE_SERVICE_ROLE_KEY=k\nSUPABASE_ANON_KEY=a\n");
+    const explicit = write("explicit.env", "OPS_PROJECT_NAME=explicit-name\n");
+    const config = loadConfig({} as never, [cwdFile, etcFile]);
+    expect(config.environment).toBe("production");
+    expect(config.supabaseUrl).toBe("https://prod");
+    expect(loadConfig({} as never, [cwdFile, etcFile, explicit]).projectName).toBe("explicit-name");
+    // The real environment beats every file.
+    expect(loadConfig({ OPS_PROJECT_NAME: "from-env" } as never, [cwdFile, etcFile, explicit]).projectName).toBe("from-env");
+  });
+
   it("rejects an unknown environment", () => {
     expect(() => loadConfig({ ...env, OPS_ENVIRONMENT: "staging" } as never)).toThrow(/OPS_ENVIRONMENT/);
   });

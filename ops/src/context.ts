@@ -38,16 +38,30 @@ export async function runCommand<T>(
   try {
     await guard(cfg, name, options);
   } catch (error) {
-    writeAudit(cfg.auditLogPath, { environment: cfg.environment, command: name, args, result: "refused", detail: (error as Error).message });
+    try {
+      writeAudit(cfg.auditLogPath, { environment: cfg.environment, command: name, args, result: "refused", detail: (error as Error).message });
+    } catch (auditError) {
+      console.error(`audit result not written: ${(auditError as Error).message}`);
+    }
     throw error;
   }
   const ctx = makeCtx({ dryRun: options.dryRun }, cfg);
+  // Record the attempt before doing anything. If the log cannot be written in production, nothing runs.
+  writeAudit(cfg.auditLogPath, { environment: cfg.environment, command: name, args, result: "started" });
+  const finish = (result: "ok" | "error" | "dry-run", detail?: string) => {
+    try {
+      writeAudit(cfg.auditLogPath, { environment: cfg.environment, command: name, args, result, detail });
+    } catch (auditError) {
+      // The work is already done or already failed; do not report the wrong outcome because the log was unwritable.
+      console.error(`audit result not written: ${(auditError as Error).message}`);
+    }
+  };
   try {
     const out = await body(ctx);
-    writeAudit(cfg.auditLogPath, { environment: cfg.environment, command: name, args, result: ctx.dryRun ? "dry-run" : "ok" });
+    finish(ctx.dryRun ? "dry-run" : "ok");
     return out;
   } catch (error) {
-    writeAudit(cfg.auditLogPath, { environment: cfg.environment, command: name, args, result: "error", detail: (error as Error).message });
+    finish("error", (error as Error).message);
     throw error;
   }
 }

@@ -129,7 +129,7 @@ describe("operator toolkit against a real stack", () => {
     await runCommand("user create", {}, { production: true, confirmProject: "rdv-prod", dryRun: true }, async () => undefined, prod);
 
     const lines = readFileSync(prod.auditLogPath, "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    expect(lines.map((l) => l.result)).toEqual(["refused", "refused", "ok", "dry-run"]);
+    expect(lines.map((l) => l.result)).toEqual(["refused", "refused", "started", "ok", "started", "dry-run"]);
     expect(readFileSync(prod.auditLogPath, "utf8")).not.toContain("never-logged");
     expect(lines.every((l) => l.environment === "production")).toBe(true);
   });

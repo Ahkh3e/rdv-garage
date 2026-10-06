@@ -9,6 +9,8 @@ export function startReceiver(shell: Shell, hub: ChannelHub, extraCrews: () => C
   const memberCrews = new Map<string, Set<CrewId>>();
   const lastPosition = new Map<string, { lat: number; lng: number; heading: number | null; ts: number }>();
 
+  let lastRefreshAsk = 0;
+
   const publish = (userId: string) => {
     const crews = memberCrews.get(userId);
     const pos = lastPosition.get(userId);
@@ -22,7 +24,14 @@ export function startReceiver(shell: Shell, hub: ChannelHub, extraCrews: () => C
     // A broadcast carries no verified sender. Trust within a crew is by design, but at least ignore ids that are not
     // members of the crew the message arrived on, so one crew cannot move another crew's members.
     const crew = shell.crewContext.store.get().crews.find((c) => c.id === crewId);
-    if (!crew || !crew.members.some((m) => m.userId === userId)) return;
+    if (!crew || !crew.members.some((m) => m.userId === userId)) {
+      // Possibly someone who joined since the crew list was loaded: ask for a refresh (at most every 10 seconds).
+      if (crew && Date.now() - lastRefreshAsk > 10000) {
+        lastRefreshAsk = Date.now();
+        shell.events.emit({ type: "crews.refresh" });
+      }
+      return;
+    }
     if (event === "stop") {
       const crews = memberCrews.get(userId);
       crews?.delete(crewId);
@@ -36,7 +45,8 @@ export function startReceiver(shell: Shell, hub: ChannelHub, extraCrews: () => C
     const crews = memberCrews.get(userId) ?? new Set<CrewId>();
     crews.add(crewId);
     memberCrews.set(userId, crews);
-    lastPosition.set(userId, { lat: payload.lat, lng: payload.lng, heading: typeof payload.heading === "number" ? payload.heading : null, ts: typeof payload.ts === "number" ? payload.ts : Date.now() });
+    // Stamped with the time it arrived here, not the sender's clock, which can be wrong by minutes.
+    lastPosition.set(userId, { lat: payload.lat, lng: payload.lng, heading: typeof payload.heading === "number" ? payload.heading : null, ts: Date.now() });
     publish(userId);
   };
 

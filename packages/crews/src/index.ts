@@ -34,6 +34,15 @@ export const crews: Module = {
       shell.backend.rpc("crews", "set_selected_crews", { p_crew_ids: crewIds }).catch(() => undefined);
     });
     shell.events.on("session.ended", () => void loadCrews(shell).catch(() => undefined));
+    // Membership changes (someone joins or is removed) show up everywhere without opening the Crews tab.
+    let lastLoad = 0;
+    const refreshSoon = () => {
+      if (shell.session.get().status !== "signedIn" || Date.now() - lastLoad < 5000) return;
+      lastLoad = Date.now();
+      loadCrews(shell).catch(() => undefined);
+    };
+    shell.events.on("crews.refresh", refreshSoon);
+    setInterval(refreshSoon, 30000);
 
     // A crew link: open the join screen with the code, or hold it until the person has an account.
     let heldCode: string | null = null;

@@ -9,7 +9,13 @@
     cfg, isIOS, isAndroid,
     lastSegment() {
       const parts = location.pathname.split("/").filter(Boolean);
-      return decodeURIComponent(parts[parts.length - 1] || "").toUpperCase();
+      const raw = parts[parts.length - 1] || "";
+      try {
+        return decodeURIComponent(raw).toUpperCase();
+      } catch {
+        // A mangled link (a chat app cut it in the middle of a percent sequence): use it as it is.
+        return raw.toUpperCase();
+      }
     },
     async rpc(schema, name, args) {
       const res = await fetch(cfg.supabaseUrl + "/rest/v1/rpc/" + name, {

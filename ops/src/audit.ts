@@ -17,7 +17,7 @@ export interface AuditEntry {
   environment: string;
   command: string;
   args: unknown;
-  result: "ok" | "error" | "refused" | "dry-run";
+  result: "started" | "ok" | "error" | "refused" | "dry-run";
   detail?: string;
 }
 

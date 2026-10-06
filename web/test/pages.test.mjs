@@ -90,6 +90,14 @@ describe("invite page", () => {
     expect(p.el("reason").textContent).toMatch(pattern);
   });
 
+  it("copes with a mangled link instead of waiting forever", async () => {
+    const p = await open("invite.html", "/i/%E0%A4%A", { rpcStatus: "invalid" });
+    expect(p.visible("checking")).toBe(false);
+    expect(p.visible("invalid")).toBe(true);
+    const crew = await open("crew.html", "/c/%E0%A4%A");
+    expect(crew.el("open").href).toMatch(/^rdvgarage:\/\/c\//);
+  });
+
   it("shows an error when the check cannot be made", async () => {
     const p = await open("invite.html", `/i/${CODE}`, { fetchImpl: async () => { throw new Error("offline"); } });
     expect(p.visible("error")).toBe(true);

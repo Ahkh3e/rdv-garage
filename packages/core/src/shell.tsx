@@ -17,6 +17,7 @@ import { parseLink } from "./links";
 import { createStore, useStore, type Store } from "./store";
 import { colors, fonts } from "./theme";
 import { Spinner } from "./ui/Bits";
+import { Text } from "./ui/Text";
 
 export interface ShellRuntime extends Shell {
   tabs: Tab[];
@@ -159,27 +160,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
             shell.live.set({ live: false, sessionId: null, crewIds: [] });
             return;
           }
-          try {
-            const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; status: string }[]>("accounts", "my_profile");
-            const row = rows[0];
-            if (!row || row.status === "deleted") {
-              await backend.auth.signOut();
-              session.set({ status: "signedOut", notice: "deleted" });
-            } else if (row.status === "suspended") {
-              await backend.auth.signOut();
-              session.set({ status: "signedOut", notice: "suspended" });
-            } else {
-              session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path } });
-            }
-          } catch (error) {
-            if (error instanceof AppError && (error.code === "network" || error.code === "unknown_error")) {
-              // Keep whatever we had; the next auth event or refresh retries.
-              if (session.get().status === "loading") session.set({ status: "signedOut" });
-              return;
-            }
-            await backend.auth.signOut();
-            session.set({ status: "signedOut" });
-          }
+          await loadProfile(userId);
         }),
       );
       Linking.getInitialURL().then((url) => url && shell.dispatchLink(url));
@@ -188,6 +169,34 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
       return () => stops.forEach((stop) => stop());
     },
   };
+
+  async function loadProfile(userId: string): Promise<void> {
+    try {
+      const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; status: string }[]>("accounts", "my_profile");
+      const row = rows[0];
+      if (!row || row.status === "deleted") {
+        await backend.auth.signOut();
+        session.set({ status: "signedOut", notice: "deleted" });
+      } else if (row.status === "suspended") {
+        await backend.auth.signOut();
+        session.set({ status: "signedOut", notice: "suspended" });
+      } else {
+        session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path } });
+      }
+    } catch (error) {
+      if (error instanceof AppError && (error.code === "network" || error.code === "unknown_error")) {
+        // A valid stored session must not look like a sign out just because the phone is offline at launch.
+        // Show a waiting screen and keep trying while this person is still the signed-in user.
+        if (session.get().status !== "signedIn") session.set({ status: "offline" });
+        setTimeout(() => {
+          if (backend.userId() === userId && session.get().status === "offline") void loadProfile(userId);
+        }, 5000);
+        return;
+      }
+      await backend.auth.signOut();
+      session.set({ status: "signedOut" });
+    }
+  }
 
   function flush() {
     if (!stackReady || !navRef.isReady() || session.get().status !== "signedIn") return;
@@ -308,6 +317,7 @@ export function ShellApp({ shell }: { shell: ShellRuntime }) {
 
   let body;
   if (state.status === "loading") body = <Spinner />;
+  else if (state.status === "offline") body = <Offline />;
   else if (state.status === "signedOut") body = AuthFlow ? <AuthFlow /> : <Spinner />;
   else body = <SignedInStack />;
 
@@ -322,6 +332,16 @@ export function ShellApp({ shell }: { shell: ShellRuntime }) {
         </View>
       </SafeAreaProvider>
     </ShellContext.Provider>
+  );
+}
+
+function Offline() {
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32, backgroundColor: colors.background }}>
+      <Spinner />
+      <Text variant="title" style={{ textAlign: "center" }}>Can't reach RDV Garage</Text>
+      <Text muted style={{ textAlign: "center" }}>You're still signed in. We'll keep trying.</Text>
+    </View>
   );
 }
 

@@ -122,12 +122,13 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
     const stillIn = new Set(crewState.crews.map((c) => c.id));
     const gone = current.engine.crewIds.filter((id) => !stillIn.has(id));
     if (gone.length === 0) return;
+    // Say goodbye on those channels first, then let go of them; releasing first would drop the stop message.
+    const left = current.engine.dropCrews(gone);
     for (const id of gone) {
       hub.untrack(id);
       current.releases.get(id)?.();
       current.releases.delete(id);
     }
-    const left = current.engine.dropCrews(gone);
     if (left.length === 0) void stop();
     else shell.live.set({ live: true, sessionId: current.engine.sessionId, crewIds: left });
   });

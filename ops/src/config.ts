@@ -20,10 +20,13 @@ function parseEnvFile(path: string): Record<string, string> {
   return out;
 }
 
-// Reads /etc/rdv-ops/env (root readable, on the operator server), then ./.env.ops, then the process environment.
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): OpsConfig {
+// Reads ./.env.ops, then /etc/rdv-ops/env (root readable, on the operator server), then RDV_OPS_ENV_FILE, then the process environment.
+export function loadConfig(env: NodeJS.ProcessEnv = process.env, files?: string[]): OpsConfig {
   const merged: Record<string, string | undefined> = {};
-  for (const path of [process.env.RDV_OPS_ENV_FILE, "/etc/rdv-ops/env", ".env.ops"]) {
+  // Later wins. A file in the current directory is the weakest, so a stray or planted ./.env.ops can never change the
+  // environment that /etc/rdv-ops/env sets. An explicitly named file and the real environment win over both.
+  const order = files ?? [".env.ops", "/etc/rdv-ops/env", env.RDV_OPS_ENV_FILE ?? ""];
+  for (const path of order) {
     if (path && existsSync(path)) Object.assign(merged, parseEnvFile(path));
   }
   Object.assign(merged, env);

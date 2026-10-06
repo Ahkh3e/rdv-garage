@@ -79,6 +79,22 @@ describe("live controller", () => {
     await c.stop();
   });
 
+  it("says goodbye on a crew's channel before letting go of it", async () => {
+    const t = setup();
+    const order: string[] = [];
+    t.hub.send = jest.fn((id: string, event: string) => void order.push(`send:${event}:${id}`));
+    t.hub.acquire = (id: string) => {
+      t.acquired.push(id);
+      return () => order.push(`release:${id}`);
+    };
+    const c = createController(t.shell, t.hub);
+    await c.goLive(["a", "b"]);
+    t.crews.set((s: any) => ({ ...s, crews: s.crews.filter((x: any) => x.id !== "a") }));
+    expect(order.indexOf("send:stop:a")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("send:stop:a")).toBeLessThan(order.indexOf("release:a"));
+    await c.stop();
+  });
+
   it("stops sharing with a crew the person leaves, but keeps sharing with the others", async () => {
     const t = setup();
     const c = createController(t.shell, t.hub);

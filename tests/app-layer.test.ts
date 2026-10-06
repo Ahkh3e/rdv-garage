@@ -232,6 +232,19 @@ describe("app backend: crews, avatars, live", () => {
     await db.channel("noop").unsubscribe().catch(() => undefined);
   }, 60000);
 
+  it("lets the auth change handler call the backend without deadlocking the sign in", async () => {
+    const u = await createUser();
+    const b = newBackend();
+    let profile: unknown = null;
+    const off = b.onAuthChange(async (id) => {
+      if (id) profile = await b.rpc("accounts", "my_profile");
+    });
+    await b.auth.signIn(u.email, u.password);
+    for (let i = 0; i < 40 && !profile; i++) await sleep(100);
+    expect(profile).not.toBeNull();
+    off();
+  });
+
   it("suspended accounts get the suspended code from the app's calls", async () => {
     const u = await createUser();
     const b = newBackend();

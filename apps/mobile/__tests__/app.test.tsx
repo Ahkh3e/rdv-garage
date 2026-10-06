@@ -316,3 +316,30 @@ describe("sign out and cold start", () => {
     expect(await screen.findByText("Choose a new password")).toBeTruthy();
   });
 });
+
+
+describe("offline at launch", () => {
+  it("shows a waiting screen instead of signing the person out, then recovers on its own", async () => {
+    jest.useFakeTimers();
+    try {
+      const { AppError } = require("@rdv/core");
+      let attempts = 0;
+      const backend = makeBackend("user-1", {
+        "accounts.my_profile": () => {
+          if (++attempts === 1) throw new AppError("network");
+          return [profileRow()];
+        },
+        "crews.list_my_crews": () => [crewsRow()],
+      });
+      const shell = await mount(backend);
+      expect(await screen.findByText("Can't reach RDV Garage")).toBeTruthy();
+      expect(shell.session.get().status).toBe("offline");
+      expect(backend.auth.signOut).not.toHaveBeenCalled();
+      await act(async () => jest.advanceTimersByTime(5100));
+      expect(await screen.findByText("Night Cruisers")).toBeTruthy();
+      expect(shell.session.get().status).toBe("signedIn");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
