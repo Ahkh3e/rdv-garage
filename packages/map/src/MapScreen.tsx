@@ -46,10 +46,12 @@ export function MapScreen() {
       if (!alive) return;
       if (result.status !== "granted") return setPermission("denied");
       setPermission("granted");
-      sub = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, (loc) => {
+      const watcher = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, (loc) => {
         const moving = (loc.coords.speed ?? 0) > 2 && loc.coords.heading !== null && loc.coords.heading >= 0;
         setMe({ lat: loc.coords.latitude, lng: loc.coords.longitude, heading: moving ? loc.coords.heading : null });
       });
+      if (!alive) return watcher.remove();
+      sub = watcher;
     })();
     return () => {
       alive = false;
@@ -98,7 +100,14 @@ export function MapScreen() {
     const lngs = points.map((p) => p[0]);
     const lats = points.map((p) => p[1]);
     setFollow(false);
-    camera.current?.fitBounds([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)], {
+    const pad = 0.002;
+    const west = Math.min(...lngs);
+    const east = Math.max(...lngs);
+    const south = Math.min(...lats);
+    const north = Math.max(...lats);
+    const bounds: [number, number, number, number] =
+      east - west < pad && north - south < pad ? [west - pad, south - pad, east + pad, north + pad] : [west, south, east, north];
+    camera.current?.fitBounds(bounds, {
       padding: { top: 190, right: 110, bottom: BOTTOM_PADDING + 60, left: 90 },
       pitch: 0,
       bearing: 0,
