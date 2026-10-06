@@ -26,6 +26,7 @@ export interface ShellRuntime extends Shell {
   authFlow: ComponentType | null;
   navRef: ReturnType<typeof createNavigationContainerRef>;
   flushNavigation(): void;
+  setStackReady(ready: boolean): void;
   dispatchLink(url: string): void;
   start(): () => void;
 }
@@ -75,6 +76,8 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
   const linkHandlers: LinkHandler[] = [];
   const pending: { route: string; params?: Record<string, unknown> }[] = [];
   const navRef = createNavigationContainerRef();
+  // Navigation is only delivered once the signed-in screens are mounted; before that the request waits.
+  let stackReady = false;
 
   // Any call that comes back "suspended" signs the user out everywhere on this device.
   let suspending = false;
@@ -116,6 +119,10 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
     authFlow: null,
     navRef,
     flushNavigation: () => flush(),
+    setStackReady(ready) {
+      stackReady = ready;
+      if (ready) flush();
+    },
     addTab: (tab) => void shell.tabs.push(tab),
     addRoute: (route) => void shell.routes.push(route),
     addFlag: (name, def) => void flags.set(name, config.flags[name] ?? def),
@@ -183,13 +190,12 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
   };
 
   function flush() {
-    if (!navRef.isReady() || session.get().status !== "signedIn") return;
+    if (!stackReady || !navRef.isReady() || session.get().status !== "signedIn") return;
     while (pending.length) {
       const next = pending.shift()!;
       (navRef as any).navigate(next.route, next.params);
     }
   }
-  session.subscribe(flush);
 
   return shell;
 }
@@ -267,8 +273,8 @@ function SignedInStack() {
   const shell = useShell();
   // Queued navigations (a reset link opened at launch) are delivered once the signed-in screens exist.
   useEffect(() => {
-    const timer = setTimeout(() => shell.flushNavigation(), 0);
-    return () => clearTimeout(timer);
+    shell.setStackReady(true);
+    return () => shell.setStackReady(false);
   }, [shell]);
   return (
     <Stack.Navigator
