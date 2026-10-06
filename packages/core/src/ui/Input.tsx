@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 import { StyleSheet, TextInput, View, type TextInputProps } from "react-native";
 import { colors, fonts, radii } from "../theme";
 import { Text } from "./Text";
@@ -9,36 +9,44 @@ interface Props extends TextInputProps {
   hint?: string;
 }
 
-export const Input = forwardRef<TextInput, Props>(function Input({ label, error, hint, style, ...rest }, ref) {
+export const Input = forwardRef<TextInput, Props>(function Input({ label, error, hint, style, onFocus, onBlur, ...rest }, ref) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={styles.wrap}>
-      {label ? <Text variant="label" muted style={styles.label}>{label}</Text> : null}
+      {label ? <Text variant="label" color={colors.subtle}>{label}</Text> : null}
       <TextInput
         ref={ref}
-        placeholderTextColor={colors.muted}
+        placeholderTextColor={colors.subtle}
         selectionColor={colors.accent}
         keyboardAppearance="dark"
-        style={[styles.input, error ? { borderColor: colors.danger } : null, style]}
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
+        style={[styles.input, focused && { borderColor: colors.focus }, error ? { borderColor: "rgba(255,69,58,0.6)" } : null, style]}
         {...rest}
       />
-      {error ? <Text variant="caption" color={colors.danger} style={styles.note}>{error}</Text> : hint ? <Text variant="caption" muted style={styles.note}>{hint}</Text> : null}
+      {error ? <Text variant="caption" color={colors.danger}>{error}</Text> : hint ? <Text variant="caption" color={colors.subtle}>{hint}</Text> : null}
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  wrap: { gap: 6 },
-  label: { marginBottom: 2 },
+  wrap: { gap: 8 },
   input: {
-    minHeight: 50,
+    minHeight: 52,
     borderRadius: radii.md,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.raised,
-    paddingHorizontal: 14,
+    backgroundColor: colors.fill,
+    paddingHorizontal: 16,
     color: colors.text,
     fontFamily: fonts.regular,
     fontSize: 16,
   },
-  note: { marginTop: 2 },
 });

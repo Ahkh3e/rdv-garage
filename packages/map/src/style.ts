@@ -25,7 +25,7 @@ export const MAP_COLORS = {
   trunk: "#DDE9F6",
   motorway: "#FFFFFF",
   rail: "#2A3442",
-  label: "#9FB2C8",
+  label: "rgba(255,255,255,0.55)",
   labelStrong: "#E6EEF7",
   labelWater: "#5F87B0",
   halo: "#0A0E14",
@@ -48,7 +48,7 @@ const road = (id: string, classes: string[], color: string, width: unknown, extr
 const casing = (id: string, classes: string[], width: unknown) =>
   road(id, classes, MAP_COLORS.casing, width, { paint: { "line-color": MAP_COLORS.casing, "line-width": width, "line-opacity": 0.9 } });
 
-export const rdvNightStyle: StyleSpecification = {
+const baseStyle: StyleSpecification = {
   version: 8,
   name: "RDV Night",
   glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
@@ -84,7 +84,7 @@ export const rdvNightStyle: StyleSpecification = {
         "fill-extrusion-color": MAP_COLORS.buildingTop,
         "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
         "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-        "fill-extrusion-opacity": 0.75,
+        "fill-extrusion-opacity": 0.5,
       },
     },
     {
@@ -108,7 +108,7 @@ export const rdvNightStyle: StyleSpecification = {
       id: "road-name", type: "symbol", source: "openmaptiles", "source-layer": "transportation_name", minzoom: 13,
       layout: {
         "symbol-placement": "line", "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]], "text-font": FONT,
-        "text-size": w([13, 10], [18, 13]), "text-letter-spacing": 0.05,
+        "text-size": w([13, 9], [18, 11]), "text-letter-spacing": 0.05,
       },
       paint: { "text-color": MAP_COLORS.label, "text-halo-color": MAP_COLORS.halo, "text-halo-width": 1.4 },
     },
@@ -132,6 +132,20 @@ export const rdvNightStyle: StyleSpecification = {
   ] as never,
 };
 
+// The same style without extruded buildings, for the flat 2D view: footprints stay visible at every close zoom.
+function flatten(style: StyleSpecification): StyleSpecification {
+  return {
+    ...style,
+    layers: style.layers
+      .filter((layer) => layer.id !== "building-3d")
+      .map((layer) => (layer.id === "building" ? ({ ...layer, maxzoom: 24 } as typeof layer) : layer)),
+  };
+}
+
+export const rdvNightStyle: StyleSpecification = baseStyle;
+export const rdvNightStyleFlat: StyleSpecification = flatten(baseStyle);
+
 // Camera used while following: tilted, close behind the car, heading up.
 export const FOLLOW_CAMERA = { zoom: 16.6, pitch: 55 } as const;
+export const FLAT_PITCH = 0;
 export const OVERVIEW_CAMERA = { zoom: 11.5, pitch: 0 } as const;

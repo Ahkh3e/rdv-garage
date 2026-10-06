@@ -22,14 +22,14 @@ export function Row({ title, subtitle, left, right, onPress, danger, testID }: R
     <View style={styles.row}>
       {left}
       <View style={{ flex: 1 }}>
-        <Text color={danger ? colors.danger : undefined}>{title}</Text>
-        {subtitle ? <Text variant="caption" muted>{subtitle}</Text> : null}
+        <Text variant="headline" color={danger ? colors.danger : undefined}>{title}</Text>
+        {subtitle ? <Text variant="body" muted style={{ fontSize: 14, lineHeight: 20 }}>{subtitle}</Text> : null}
       </View>
       {right}
     </View>
   );
   return onPress ? (
-    <Pressable testID={testID} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}>
+    <Pressable testID={testID} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [{ backgroundColor: pressed ? colors.press : "transparent" }]}>
       {content}
     </Pressable>
   ) : (
@@ -38,10 +38,10 @@ export function Row({ title, subtitle, left, right, onPress, danger, testID }: R
 }
 
 export function Divider() {
-  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border }} />;
+  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.hairline, marginLeft: 16 }} />;
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, overflow: "hidden" },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
+  card: { backgroundColor: colors.s1, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, overflow: "hidden" },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, minHeight: 64, paddingVertical: 10 },
 });

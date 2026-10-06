@@ -47,7 +47,7 @@ export function Avatar({ handle, path, size = 40, ring }: Props) {
         <Image source={{ uri: url }} style={{ width: inner, height: inner, borderRadius: inner / 2 }} />
       ) : (
         <View style={[styles.fallback, { width: inner, height: inner, borderRadius: inner / 2 }]}>
-          <Text style={{ fontFamily: fonts.semibold, fontSize: inner * 0.42 }} muted>{handle.slice(0, 1).toUpperCase()}</Text>
+          <Text style={{ fontFamily: fonts.display, fontSize: inner * 0.42, lineHeight: inner * 0.52 }} muted>{handle.slice(0, 1).toUpperCase()}</Text>
         </View>
       )}
     </View>

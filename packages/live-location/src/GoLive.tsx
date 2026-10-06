@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { Button, Chip, Disclaimer, Sheet, Text, colors, crewStyle, messageFor, radii, useCrewState, useLiveState, useShell } from "@rdv/core";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { Button, Chip, Disclaimer, Glass, PulseDot, Sheet, Text, colors, crewStyle, messageFor, radii, useCrewState, useLiveState, useShell } from "@rdv/core";
 import type { LiveController } from "./controller";
 import { openSettings } from "./permissions";
 
@@ -32,7 +33,10 @@ export function GoLiveControl() {
     setError(null);
     try {
       const result = await controller!.goLive(picked);
-      if (result === "ok") setOpen(false);
+      if (result === "ok") {
+        setOpen(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      }
       else {
         setNeedsSettings(true);
         setError(result === "denied" ? "Location access is off. Turn it on in Settings to go live." : "Going live needs location access all the time, so crew members still see you when the app is in the background.");
@@ -48,14 +52,14 @@ export function GoLiveControl() {
     const names = crewState.crews.filter((c) => live.crewIds.includes(c.id)).map((c) => c.name);
     return (
       <View style={styles.dock} pointerEvents="box-none">
-        <View style={styles.livePill}>
-          <View style={styles.liveDot} />
+        <Glass kind="control" style={styles.livePill}>
+          <PulseDot />
           <View style={{ flex: 1 }}>
-            <Text bold>Live</Text>
+            <Text variant="headline">Live</Text>
             <Text variant="caption" muted numberOfLines={1}>Visible to {names.join(", ") || "your crews"}</Text>
           </View>
-          <Button title="Stop" testID="golive-stop" variant="secondary" onPress={() => void controller!.stop()} style={{ minHeight: 40, paddingHorizontal: 16 }} />
-        </View>
+          <Button title="Stop" testID="golive-stop" variant="ghost" onPress={() => void controller!.stop()} style={{ minHeight: 40, paddingHorizontal: 16 }} />
+        </Glass>
       </View>
     );
   }
@@ -67,10 +71,10 @@ export function GoLiveControl() {
         testID="golive-button"
         accessibilityRole="button"
         onPress={() => (noCrews ? shell.navigate("Tabs") : setOpen(true))}
-        style={({ pressed }) => [styles.cta, { opacity: pressed ? 0.85 : 1 }]}
+        style={({ pressed }) => [styles.cta, pressed && { backgroundColor: colors.accentPressed, transform: [{ scale: 0.98 }] }]}
       >
-        <Ionicons name="radio" size={20} color="#0A0A0B" />
-        <Text bold color="#0A0A0B">{noCrews ? "Join a crew to go live" : "Go live"}</Text>
+        <Feather name="radio" size={18} color={colors.onAccent} />
+        <Text variant="headline" color={colors.onAccent}>{noCrews ? "Join a crew to go live" : "Go live"}</Text>
       </Pressable>
       <Sheet visible={open} onClose={() => setOpen(false)} title="Go live">
         <Text muted>Pick who can see you. They see your position and your top speed after the session. Stop any time.</Text>
@@ -85,10 +89,12 @@ export function GoLiveControl() {
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: on }}
                 onPress={() => setPicked(on ? picked.filter((id) => id !== crew.id) : [...picked, crew.id])}
-                style={[styles.crewRow, on && { borderColor: style.tint }]}
+                style={styles.crewRow}
               >
-                <Ionicons name={on ? "checkbox" : "square-outline"} size={22} color={on ? colors.accent : colors.muted} />
-                <Text style={{ flex: 1 }}>{crew.name}</Text>
+                <View style={[styles.box, on && { backgroundColor: colors.accent, borderColor: colors.accent }]}>
+                  {on ? <Feather name="check" size={15} color={colors.onAccent} /> : null}
+                </View>
+                <Text variant="headline" style={{ flex: 1 }}>{crew.name}</Text>
                 <Chip label={`${crew.members.length}`} tint={style.tint} />
               </Pressable>
             );
@@ -105,8 +111,8 @@ export function GoLiveControl() {
 
 const styles = StyleSheet.create({
   dock: { position: "absolute", left: 16, right: 16, bottom: 20, alignItems: "center" },
-  cta: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.accent, paddingHorizontal: 28, minHeight: 56, borderRadius: radii.pill, shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
-  livePill: { flexDirection: "row", alignItems: "center", gap: 12, alignSelf: "stretch", backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.accent, padding: 12 },
-  liveDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent },
-  crewRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.raised },
+  cta: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.accent, paddingHorizontal: 28, minHeight: 56, minWidth: 168, justifyContent: "center", borderRadius: radii.pill, shadowColor: "#000", shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
+  livePill: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "stretch", borderRadius: radii.md, paddingVertical: 10, paddingLeft: 12, paddingRight: 8 },
+  crewRow: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 56, paddingHorizontal: 14, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.fill },
+  box: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
 });

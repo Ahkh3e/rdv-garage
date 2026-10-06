@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { Platform, StatusBar, StyleSheet, View } from "react-native";
 import * as Linking from "expo-linking";
-import { Ionicons } from "@expo/vector-icons";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { BottomTabBarHeightContext, createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createNavigationContainerRef, DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -17,6 +18,7 @@ import { parseLink } from "./links";
 import { createStore, useStore, type Store } from "./store";
 import { colors, fonts } from "./theme";
 import { Spinner } from "./ui/Bits";
+import { Glass, GlassButton } from "./ui/Glass";
 import { Text } from "./ui/Text";
 
 export interface ShellRuntime extends Shell {
@@ -243,8 +245,10 @@ export function Slot({ name }: { name: string }) {
 
 const navTheme = {
   ...DarkTheme,
-  colors: { ...DarkTheme.colors, background: colors.background, card: colors.background, border: colors.border, primary: colors.accent, text: colors.text },
+  colors: { ...DarkTheme.colors, background: colors.background, card: colors.background, border: colors.hairline, primary: colors.accent, text: colors.text },
 };
+
+const TAB_ICONS: Record<string, string> = { Map: "map", Crews: "users", Board: "award", Me: "user" };
 
 const Tabs = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -255,12 +259,14 @@ function TabsScreen() {
   return (
     <Tabs.Navigator
       initialRouteName={tabs.find((t) => t.id === "Crews")?.id ?? tabs[0]?.id}
+      screenListeners={{ tabPress: () => void Haptics.selectionAsync().catch(() => undefined) }}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.border },
-        tabBarLabelStyle: { fontFamily: fonts.semibold, fontSize: 11 },
+        tabBarActiveTintColor: colors.text,
+        tabBarInactiveTintColor: colors.subtle,
+        tabBarStyle: { position: "absolute", backgroundColor: "transparent", borderTopWidth: 0, elevation: 0 },
+        tabBarBackground: () => <Glass kind="bar" style={{ flex: 1, borderWidth: 0, borderTopWidth: StyleSheet.hairlineWidth }} />,
+        tabBarLabelStyle: { fontFamily: fonts.medium, fontSize: 10.5, letterSpacing: 0.2 },
       }}
     >
       {tabs.map((tab) => (
@@ -270,7 +276,12 @@ function TabsScreen() {
           component={tab.component}
           options={{
             title: tab.title,
-            tabBarIcon: ({ color, size }) => <Ionicons name={tab.icon as any} size={size} color={color} />,
+            tabBarIcon: ({ color, focused }) => (
+              <View style={{ alignItems: "center" }}>
+                <View style={{ position: "absolute", top: -9, width: 16, height: 2, borderRadius: 1, backgroundColor: focused ? colors.accent : "transparent" }} />
+                <Feather name={(TAB_ICONS[tab.id] ?? "circle") as any} size={22} color={color} />
+              </View>
+            ),
           }}
         />
       ))}
@@ -287,14 +298,19 @@ function SignedInStack() {
   }, [shell]);
   return (
     <Stack.Navigator
-      screenOptions={{
+      screenOptions={({ navigation }) => ({
+        headerLeft: () => (
+          <GlassButton label="Back" onPress={() => navigation.goBack()}>
+            <Feather name="chevron-left" size={22} color={colors.text} />
+          </GlassButton>
+        ),
         contentStyle: { backgroundColor: colors.background },
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
-        headerTitleStyle: { fontFamily: fonts.semibold },
+        headerTitleStyle: { fontFamily: fonts.display, fontSize: 17 },
         headerShadowVisible: false,
         headerBackButtonDisplayMode: "minimal",
-      }}
+      })}
     >
       <Stack.Screen name="Tabs" component={TabsScreen} options={{ headerShown: false }} />
       {shell.routes.map((route) => (

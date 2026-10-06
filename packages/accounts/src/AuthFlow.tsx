@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { colors, fonts } from "@rdv/core";
+import { Feather } from "@expo/vector-icons";
+import { GlassButton, colors, fonts } from "@rdv/core";
 import { ConfirmEmail } from "./screens/ConfirmEmail";
 import { CreateAccount } from "./screens/CreateAccount";
 import { EnterInvite } from "./screens/EnterInvite";
@@ -13,7 +14,12 @@ const Stack = createNativeStackNavigator();
 export function AuthFlow() {
   return (
     <Stack.Navigator
-      screenOptions={{
+      screenOptions={({ navigation }) => ({
+        headerLeft: () => (
+          <GlassButton label="Back" onPress={() => navigation.goBack()}>
+            <Feather name="chevron-left" size={22} color={colors.text} />
+          </GlassButton>
+        ),
         contentStyle: { backgroundColor: colors.background },
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
@@ -21,7 +27,7 @@ export function AuthFlow() {
         headerShadowVisible: false,
         headerBackButtonDisplayMode: "minimal",
         title: "",
-      }}
+      })}
     >
       <Stack.Screen name="Welcome" component={Welcome} options={{ headerShown: false }} />
       <Stack.Screen name="EnterInvite" component={EnterInvite} />

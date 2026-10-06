@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { useContext } from "react";
+import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme";
 
@@ -16,10 +18,11 @@ interface Props {
 
 export function Screen({ children, scroll = true, padded = true, topInset = true, refreshing, onRefresh, style, footer }: Props) {
   const insets = useSafeAreaInsets();
+  const tabBar = useContext(BottomTabBarHeightContext) ?? 0;
   const body = scroll ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={[padded && styles.padded, { flexGrow: 1 }, style]}
+      contentContainerStyle={[padded && styles.padded, { flexGrow: 1, paddingBottom: (padded ? 20 : 0) + tabBar }, style]}
       refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.muted} /> : undefined}
     >
       {children}
