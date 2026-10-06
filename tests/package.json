@@ -14,5 +14,11 @@
     "pg": "^8.13.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@rdv/core": "workspace:*",
+    "@rdv/crews": "workspace:*",
+    "@rdv/live-location": "workspace:*",
+    "@rdv/ops": "workspace:*"
   }
 }

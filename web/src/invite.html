@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#0A0A0B">
+<title>RDV Garage invite</title>
+<link rel="stylesheet" href="/assets/styles.css">
+</head><body><main>
+  <div class="eyebrow">Invite only</div>
+  <h1>RDV<br>Garage</h1>
+
+  <section id="checking"><p>Checking your invite…</p></section>
+
+  <section id="valid" class="card hidden">
+    <h2>You're invited</h2>
+    <p>Private crews and one live map for the Toronto car scene. This invite works for 24 hours.</p>
+    <div class="code" id="code"></div>
+    <a id="open" class="btn primary" href="#">Open in RDV Garage</a>
+    <a id="store" class="btn hidden" href="#">Get the app</a>
+    <p id="hint" class="hidden" style="font-size:14px"></p>
+    <p id="desktop" class="hidden" style="font-size:14px">RDV Garage is a mobile app. Open this link on your phone.</p>
+  </section>
+
+  <section id="invalid" class="card hidden">
+    <h2 id="why">This invite isn't available</h2>
+    <p id="reason"></p>
+    <p>Ask the person who shared it for a new invite.</p>
+  </section>
+
+  <section id="error" class="card hidden"><h2>Can't check right now</h2><p>Check your connection and refresh.</p></section>
+
+  <footer>
+    <div class="notice" id="disclaimer"></div>
+    <a href="/terms">Read the full safety terms</a>
+  </footer>
+</main>
+<script src="/config.js"></script>
+<script src="/assets/common.js"></script>
+<script>
+(async () => {
+  const L = window.RDVLinks;
+  document.getElementById("disclaimer").textContent = L.cfg.disclaimer || "";
+  const code = L.lastSegment();
+  const copy = {
+    expired: "That invite has expired. Invites last 24 hours.",
+    revoked: "That invite is no longer active.",
+    disabled: "That invite is no longer active.",
+    invalid: "We don't recognize that invite.",
+  };
+  L.hide("checking");
+  try {
+    const status = await L.rpc("referral", "check_invite", { p_code: code });
+    if (status !== "valid") {
+      document.getElementById("reason").textContent = copy[status] || copy.invalid;
+      return L.show("invalid");
+    }
+    document.getElementById("code").textContent = code;
+    document.getElementById("open").href = "rdvgarage://i/" + code;
+    const store = L.storeUrl(code);
+    if (store) {
+      const el = document.getElementById("store");
+      el.href = store; L.show("store");
+      if (L.isIOS) {
+        // iOS does not carry link data through an install, so put the code on the clipboard first.
+        el.addEventListener("click", () => L.copy(code));
+        const hint = document.getElementById("hint");
+        hint.textContent = "Tap Get the app. Your invite code is copied, and the app picks it up when you open it.";
+        L.show("hint");
+        L.copy(code);
+      }
+    } else {
+      L.hide("open"); L.show("desktop");
+    }
+    L.show("valid");
+  } catch { L.show("error"); }
+})();
+</script></body></html>

@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["__APPLE_TEAM_ID__.app.rdvgarage.mobile"],
+        "components": [
+          { "/": "/i/*" },
+          { "/": "/c/*" },
+          { "/": "/reset" },
+          { "/": "/confirm" }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,312 @@
+import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
+import { Platform, StatusBar, StyleSheet, View } from "react-native";
+import * as Linking from "expo-linking";
+import { Ionicons } from "@expo/vector-icons";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createNavigationContainerRef, DarkTheme, NavigationContainer } from "@react-navigation/native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import type { AppConfig } from "./config";
+import type {
+  Backend, CrewContext, CrewContextState, CrewSummary, LinkHandler, LiveState, LocationStream, MemberPosition,
+  MenuItem, Route, SessionState, Shell, Tab,
+} from "./contracts";
+import { AppError } from "./errors";
+import { createEvents } from "./events";
+import { parseLink } from "./links";
+import { createStore, useStore, type Store } from "./store";
+import { colors, fonts } from "./theme";
+import { Spinner } from "./ui/Bits";
+
+export interface ShellRuntime extends Shell {
+  tabs: Tab[];
+  routes: Route[];
+  menu: MenuItem[];
+  slots: Map<string, { component: ComponentType; order: number }[]>;
+  authFlow: ComponentType | null;
+  navRef: ReturnType<typeof createNavigationContainerRef>;
+  dispatchLink(url: string): void;
+  start(): () => void;
+}
+
+function createCrewContext(events: ReturnType<typeof createEvents>): CrewContext {
+  const store = createStore<CrewContextState>({ loaded: false, crews: [], selected: [] });
+  return {
+    store,
+    setCrews(crews) {
+      const withStyle: CrewSummary[] = crews.map((crew, index) => ({ ...crew, styleIndex: index }));
+      store.set({ loaded: true, crews: withStyle, selected: withStyle.filter((c) => c.selected).map((c) => c.id) });
+    },
+    select(ids) {
+      store.set((prev) => ({
+        ...prev,
+        selected: ids,
+        crews: prev.crews.map((c) => ({ ...c, selected: ids.includes(c.id) })),
+      }));
+      events.emit({ type: "crew.selected", crewIds: ids });
+    },
+  };
+}
+
+function createLocationStream(): LocationStream {
+  const store = createStore<Record<string, MemberPosition>>({});
+  return {
+    store,
+    publish: (p) => store.set((prev) => ({ ...prev, [p.userId]: p })),
+    remove: (userId) =>
+      store.set((prev) => {
+        if (!(userId in prev)) return prev;
+        const { [userId]: _removed, ...rest } = prev;
+        return rest;
+      }),
+    clear: () => store.set({}),
+  };
+}
+
+export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntime {
+  const events = createEvents();
+  const session = createStore<SessionState>({ status: "loading" });
+  const live = createStore<LiveState>({ live: false, sessionId: null, crewIds: [] });
+  const flags = new Map<string, boolean>();
+  const linkHandlers: LinkHandler[] = [];
+  const pending: { route: string; params?: Record<string, unknown> }[] = [];
+  const navRef = createNavigationContainerRef();
+
+  // Any call that comes back "suspended" signs the user out everywhere on this device.
+  let suspending = false;
+  const onSuspended = () => {
+    if (suspending) return;
+    suspending = true;
+    events.emit({ type: "account.suspended" });
+    rawBackend.auth.signOut().finally(() => {
+      session.set({ status: "signedOut", notice: "suspended" });
+      suspending = false;
+    });
+  };
+  const guard = async <T,>(run: () => Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof AppError && error.code === "suspended") onSuspended();
+      throw error;
+    }
+  };
+  const backend: Backend = {
+    ...rawBackend,
+    rpc: (schema, name, args) => guard(() => rawBackend.rpc(schema, name, args)),
+    invoke: (name, body) => guard(() => rawBackend.invoke(name, body)),
+  };
+
+  const shell: ShellRuntime = {
+    config,
+    backend,
+    events,
+    session,
+    live,
+    crewContext: createCrewContext(events),
+    locationStream: createLocationStream(),
+    tabs: [],
+    routes: [],
+    menu: [],
+    slots: new Map(),
+    authFlow: null,
+    navRef,
+    addTab: (tab) => void shell.tabs.push(tab),
+    addRoute: (route) => void shell.routes.push(route),
+    addFlag: (name, def) => void flags.set(name, config.flags[name] ?? def),
+    isEnabled: (name) => flags.get(name) ?? config.flags[name] ?? true,
+    addSlot(slot, component, order = 0) {
+      const list = shell.slots.get(slot) ?? [];
+      list.push({ component, order });
+      list.sort((a, b) => a.order - b.order);
+      shell.slots.set(slot, list);
+    },
+    addMenuItem: (item) => void shell.menu.push(item),
+    addLinkHandler: (handler) => void linkHandlers.push(handler),
+    setAuthFlow(component) {
+      shell.authFlow = component;
+    },
+    navigate(route, params) {
+      pending.push({ route, params });
+      flush();
+    },
+    dispatchLink(url) {
+      const link = parseLink(url);
+      if (!link) return;
+      for (const handler of linkHandlers) if (handler.kind === link.kind) handler.handle(link);
+    },
+    start() {
+      const stops: (() => void)[] = [];
+      stops.push(
+        backend.onAuthChange(async (userId) => {
+          if (!userId) {
+            const prev = session.get();
+            session.set({ status: "signedOut", notice: prev.status === "signedOut" ? prev.notice : undefined });
+            shell.locationStream.clear();
+            return;
+          }
+          try {
+            const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; status: string }[]>("accounts", "my_profile");
+            const row = rows[0];
+            if (!row || row.status === "deleted") {
+              await backend.auth.signOut();
+              session.set({ status: "signedOut", notice: "deleted" });
+            } else if (row.status === "suspended") {
+              await backend.auth.signOut();
+              session.set({ status: "signedOut", notice: "suspended" });
+            } else {
+              session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path } });
+            }
+          } catch (error) {
+            if (error instanceof AppError && (error.code === "network" || error.code === "unknown_error")) {
+              // Keep whatever we had; the next auth event or refresh retries.
+              if (session.get().status === "loading") session.set({ status: "signedOut" });
+              return;
+            }
+            await backend.auth.signOut();
+            session.set({ status: "signedOut" });
+          }
+        }),
+      );
+      Linking.getInitialURL().then((url) => url && shell.dispatchLink(url));
+      const sub = Linking.addEventListener("url", ({ url }) => shell.dispatchLink(url));
+      stops.push(() => sub.remove());
+      return () => stops.forEach((stop) => stop());
+    },
+  };
+
+  function flush() {
+    if (!navRef.isReady() || session.get().status !== "signedIn") return;
+    while (pending.length) {
+      const next = pending.shift()!;
+      (navRef as any).navigate(next.route, next.params);
+    }
+  }
+  session.subscribe(flush);
+
+  return shell;
+}
+
+// ---- React bindings ----------------------------------------------------------------
+const ShellContext = createContext<ShellRuntime | null>(null);
+
+export function useShell(): ShellRuntime {
+  const shell = useContext(ShellContext);
+  if (!shell) throw new Error("useShell must be used inside <ShellApp>");
+  return shell;
+}
+
+export const useSession = () => useStore(useShell().session);
+export const useCrewState = () => useStore(useShell().crewContext.store);
+export const useLiveState = () => useStore(useShell().live);
+export const usePositions = () => useStore(useShell().locationStream.store);
+
+export function useSignedInProfile() {
+  const state = useSession();
+  if (state.status !== "signedIn") throw new Error("not signed in");
+  return state;
+}
+
+export function Slot({ name }: { name: string }) {
+  const shell = useShell();
+  const items = shell.slots.get(name) ?? [];
+  return (
+    <>
+      {items.map(({ component: C }, i) => (
+        <C key={`${name}-${i}`} />
+      ))}
+    </>
+  );
+}
+
+const navTheme = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, background: colors.background, card: colors.background, border: colors.border, primary: colors.accent, text: colors.text },
+};
+
+const Tabs = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+
+function TabsScreen() {
+  const shell = useShell();
+  const tabs = useMemo(() => [...shell.tabs].sort((a, b) => a.order - b.order), [shell]);
+  return (
+    <Tabs.Navigator
+      initialRouteName={tabs.find((t) => t.id === "Crews")?.id ?? tabs[0]?.id}
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.border },
+        tabBarLabelStyle: { fontFamily: fonts.semibold, fontSize: 11 },
+      }}
+    >
+      {tabs.map((tab) => (
+        <Tabs.Screen
+          key={tab.id}
+          name={tab.id}
+          component={tab.component}
+          options={{
+            title: tab.title,
+            tabBarIcon: ({ color, size }) => <Ionicons name={tab.icon as any} size={size} color={color} />,
+          }}
+        />
+      ))}
+    </Tabs.Navigator>
+  );
+}
+
+function SignedInStack() {
+  const shell = useShell();
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        contentStyle: { backgroundColor: colors.background },
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
+        headerTitleStyle: { fontFamily: fonts.semibold },
+        headerShadowVisible: false,
+        headerBackButtonDisplayMode: "minimal",
+      }}
+    >
+      <Stack.Screen name="Tabs" component={TabsScreen} options={{ headerShown: false }} />
+      {shell.routes.map((route) => (
+        <Stack.Screen
+          key={route.name}
+          name={route.name}
+          component={route.component}
+          options={{ title: route.title ?? "", presentation: route.presentation === "modal" ? "modal" : "card" }}
+        />
+      ))}
+    </Stack.Navigator>
+  );
+}
+
+export function ShellApp({ shell }: { shell: ShellRuntime }) {
+  const state = useStore(shell.session);
+  const [ready, setReady] = useState(false);
+  useEffect(() => shell.start(), [shell]);
+  const AuthFlow = shell.authFlow;
+
+  let body;
+  if (state.status === "loading") body = <Spinner />;
+  else if (state.status === "signedOut") body = AuthFlow ? <AuthFlow /> : <Spinner />;
+  else body = <SignedInStack />;
+
+  return (
+    <ShellContext.Provider value={shell}>
+      <SafeAreaProvider>
+        <View style={styles.root}>
+          <StatusBar barStyle="light-content" backgroundColor={Platform.OS === "android" ? colors.background : undefined} />
+          <NavigationContainer ref={shell.navRef} theme={navTheme} onReady={() => setReady(ready || true)}>
+            {body}
+          </NavigationContainer>
+        </View>
+      </SafeAreaProvider>
+    </ShellContext.Provider>
+  );
+}
+
+const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.background } });
+
+export type { Store };

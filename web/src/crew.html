@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#0A0A0B">
+<title>RDV Garage crew</title>
+<link rel="stylesheet" href="/assets/styles.css">
+</head><body><main>
+  <div class="eyebrow">Crew link</div>
+  <h1>Join a crew</h1>
+  <section class="card">
+    <p>Open this link on a phone that has RDV Garage and an account. Crew links only work for existing members.</p>
+    <a id="open" class="btn primary" href="#">Open in RDV Garage</a>
+    <div class="notice">Don't have an account yet? RDV Garage is invite only. Ask a member to send you an invite first, then open this crew link again.</div>
+    <p id="desktop" class="hidden" style="font-size:14px">RDV Garage is a mobile app. Open this link on your phone.</p>
+  </section>
+  <footer><div class="notice" id="disclaimer"></div><a href="/terms">Read the full safety terms</a></footer>
+</main>
+<script src="/config.js"></script>
+<script src="/assets/common.js"></script>
+<script>
+  const L = window.RDVLinks;
+  document.getElementById("disclaimer").textContent = L.cfg.disclaimer || "";
+  document.getElementById("open").href = "rdvgarage://c/" + L.lastSegment();
+  if (!L.isIOS && !L.isAndroid) { L.hide("open"); L.show("desktop"); }
+</script></body></html>

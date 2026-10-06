@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#0A0A0B">
+<title>Email confirmed</title>
+<link rel="stylesheet" href="/assets/styles.css">
+</head><body><main>
+  <div class="eyebrow">RDV Garage</div>
+  <h1>Email confirmed</h1>
+  <section class="card">
+    <p>You're all set. Open the app and sign in with your email and password.</p>
+    <a id="open" class="btn primary" href="rdvgarage://confirm">Open RDV Garage</a>
+    <a id="store" class="btn hidden" href="#">Get the app</a>
+  </section>
+  <footer><div class="notice" id="disclaimer"></div><a href="/terms">Read the full safety terms</a></footer>
+</main>
+<script src="/config.js"></script>
+<script src="/assets/common.js"></script>
+<script>
+  const L = window.RDVLinks;
+  document.getElementById("disclaimer").textContent = L.cfg.disclaimer || "";
+  const store = L.storeUrl(null);
+  if (store) { const s = document.getElementById("store"); s.href = store; L.show("store"); }
+</script></body></html>
