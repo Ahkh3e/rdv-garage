@@ -123,6 +123,8 @@ export function splitPlans(rdvs: Rdv[], now: number): { upcoming: Rdv[]; past: R
   return { upcoming, past };
 }
 
+export const upcomingFor = (rdvs: Rdv[], crewId: string, now: number): Rdv[] => splitPlans(rdvs.filter((r) => r.crewIds.includes(crewId)), now).upcoming;
+
 export const inCrews = (rdv: Pick<Rdv, "crewIds">, crewIds: string[]) => rdv.crewIds.some((id) => crewIds.includes(id));
 
 // A scheduled RDV of the selected crews shows a pin until it ends. A private event has no place for someone who has not

@@ -131,6 +131,24 @@ describe("RDV detail", () => {
     expect(directions).toHaveBeenCalledWith({ lat: 43.65, lng: -79.38, label: "Harbour lot" });
   });
 
+  it("shows the straight-line distance from the device, worked out locally", async () => {
+    const b = backend(() => [rdvRow()]);
+    const { shell } = await mount(b);
+    await act(async () => shell.mapBridge.setMe({ lat: 43.66, lng: -79.38 }));
+    shell.pins.press("rdvs:r1");
+    expect(await screen.findByText("Harbour lot  ·  1.1 km away")).toBeTruthy();
+    expect(JSON.stringify([b.calls, b.invoked])).not.toContain("43.66");
+  });
+
+  it("shows no distance for a private event whose place is hidden", async () => {
+    const { shell } = await mount(backend(() => [rdvRow({ kind: "private_event", place: null, note: null })]));
+    await act(async () => shell.mapBridge.setMe({ lat: 43.66, lng: -79.38 }));
+    await fireEvent.press(screen.getByTestId("rdv-plans"));
+    await fireEvent.press(await screen.findByTestId("rdv-row-r1"));
+    expect(await screen.findByText("Waterfront")).toBeTruthy();
+    expect(screen.queryByText(/away/)).toBeNull();
+  });
+
   it("sends the answer", async () => {
     const b = backend(() => [rdvRow()]);
     const { shell } = await mount(b);
@@ -191,7 +209,7 @@ describe("RDV detail", () => {
 });
 
 describe("I'm here", () => {
-  const open = () => rdvRow({ starts_at: iso(Date.now() - 10 * 60000), end_at: iso(Date.now() + 2 * H) });
+  const open = (over: Record<string, unknown> = {}) => rdvRow({ ...over, starts_at: iso(Date.now() - 10 * 60000), end_at: iso(Date.now() + 2 * H) });
 
   it("takes one reading, records arrival, and only offers to go live", async () => {
     const b = backend(() => [open()]);
@@ -204,6 +222,20 @@ describe("I'm here", () => {
     expect(b.calls.some((c) => c.name.startsWith("live."))).toBe(false);
     await fireEvent.press(screen.getByTestId("rdv-offer-dismiss"));
     expect(screen.queryByText("Go live for this RDV?")).toBeNull();
+    expect(b.calls.some((c) => c.name.startsWith("live."))).toBe(false);
+  });
+
+  it("opens the Go live sheet with only the RDV's crews that the person is in chosen, and starts nothing", async () => {
+    const second = { ...crewsRow, id: "crew-2", name: "Day Drivers" };
+    const b = backend(() => [open({ crew_ids: ["crew-1", "crew-9"] })], { "crews.list_my_crews": () => [crewsRow, second] });
+    const { shell } = await mount(b);
+    shell.pins.press("rdvs:r1");
+    await fireEvent.press(await screen.findByTestId("rdv-here"));
+    await fireEvent.press(await screen.findByTestId("rdv-offer-go-live"));
+    const row = (name: string) => screen.findByTestId(`golive-crew-${name}`);
+    expect((await row("Night Cruisers")).props.accessibilityState.checked).toBe(true);
+    expect((await row("Day Drivers")).props.accessibilityState.checked).toBe(false);
+    expect(screen.getByTestId("golive-start")).toBeTruthy();
     expect(b.calls.some((c) => c.name.startsWith("live."))).toBe(false);
   });
 
@@ -328,5 +360,34 @@ describe("reminders", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("Crew detail RDVs", () => {
+  it("lists the crew's upcoming RDVs and opens one", async () => {
+    const { shell } = await mount(backend(() => [rdvRow(), rdvRow({ id: "elsewhere", title: "Other crew", crew_ids: ["crew-9"] }), rdvRow({ id: "old", title: "Old meet", starts_at: iso(Date.now() - 30 * H), end_at: iso(Date.now() - 27 * H) })]));
+    shell.navigate("CrewDetail", { id: "crew-1" });
+    expect(await screen.findByText("Upcoming RDVs")).toBeTruthy();
+    expect(screen.getByText("Sunday meet")).toBeTruthy();
+    expect(screen.queryByText("Other crew")).toBeNull();
+    expect(screen.queryByText("Old meet")).toBeNull();
+    await fireEvent.press(screen.getByTestId("rdv-row-r1"));
+    expect(await screen.findByTestId("rdv-host")).toBeTruthy();
+  });
+
+  it("shows an empty state when the crew has none", async () => {
+    const { shell } = await mount(backend(() => []));
+    shell.navigate("CrewDetail", { id: "crew-1" });
+    expect(await screen.findByTestId("crew-rdvs-empty")).toBeTruthy();
+  });
+});
+
+describe("Stats", () => {
+  it("adds a Stats row to Me showing the person's own meets attended", async () => {
+    await mount(backend(() => [], { "rdvs.my_meets_attended": () => 3 }));
+    await fireEvent.press(screen.getAllByText("Me")[0]!);
+    await fireEvent.press(await screen.findByTestId("me-stats"));
+    expect((await screen.findByTestId("stats-meets")).props.children).toBe("3");
+    expect(screen.getByText("Meets attended")).toBeTruthy();
   });
 });

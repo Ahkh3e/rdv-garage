@@ -3,7 +3,7 @@ import { dayOptions, defaultStart, draftError, emptyDraft, endOf, minutesOfDay, 
 import { formatDay, formatDuration, formatTime, formatWhen } from "./format";
 import {
   areaName, attendanceWindow, canAnswer, canCancel, canEdit, canMarkHere, diffReminders, effectiveEnd, inAttendanceWindow, insideRadius, isHappening,
-  pinColorKey, reminderFor, remindersFor, shouldReportArrival, showsPin, splitPlans, toMapPin, type Rdv,
+  pinColorKey, reminderFor, remindersFor, shouldReportArrival, showsPin, splitPlans, toMapPin, upcomingFor, type Rdv,
 } from "./model";
 
 const H = 3600000;
@@ -101,6 +101,19 @@ describe("ordering", () => {
   it("breaks ties by id", () => {
     const { upcoming } = splitPlans([rdv({ id: "b" }), rdv({ id: "a" })], NOW);
     expect(upcoming.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("upcomingFor", () => {
+  it("lists a crew's RDVs that have not ended, soonest first, across multi-crew RDVs", () => {
+    const rows = [
+      rdv({ id: "a", startsAt: NOW + 2 * H, crewIds: ["c1", "c2"] }),
+      rdv({ id: "b", startsAt: NOW + H, crewIds: ["c1"] }),
+      rdv({ id: "other", crewIds: ["c2"] }),
+      rdv({ id: "old", startsAt: NOW - 9 * H, endAt: NOW - 6 * H, crewIds: ["c1"] }),
+    ];
+    expect(upcomingFor(rows, "c1", NOW).map((r) => r.id)).toEqual(["b", "a"]);
+    expect(upcomingFor(rows, "c3", NOW)).toEqual([]);
   });
 });
 
