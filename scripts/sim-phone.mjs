@@ -1,4 +1,5 @@
 // Drives a booted iOS simulator along a road-snapped loop.
+// Loops until stopped (Ctrl-C), so the phone keeps driving.
 // usage: node scripts/sim-phone.mjs <udid> <city|highway|loopA|loopB> [speed m/s=14] [start fraction 0..1]
 import { spawnSync } from "node:child_process";
 import { ROADS } from "../ops/src/roads.ts";
@@ -20,7 +21,12 @@ for (const p of ordered) {
     last = p;
   }
 }
+const lengthM = picked.slice(1).reduce((sum, p, i) => sum + Math.hypot((p.lat - picked[i].lat) * 111320, (p.lng - picked[i].lng) * 80000), 0);
+const lapMs = Math.ceil((lengthM / Number(speed)) * 1000) + 1500;
 const args = ["simctl", "location", udid, "start", `--speed=${speed}`, "--interval=0.5", ...picked.map((p) => `${p.lat},${p.lng}`)];
-const result = spawnSync("xcrun", args, { stdio: "inherit" });
-console.log(`${name}: ${picked.length} waypoints at ${speed} m/s`);
-process.exit(result.status ?? 0);
+console.log(`${name}: ${picked.length} waypoints at ${speed} m/s, ${Math.round(lapMs / 1000)} s per lap, looping`);
+const lap = () => {
+  spawnSync("xcrun", args, { stdio: "ignore" });
+};
+lap();
+setInterval(lap, lapMs);

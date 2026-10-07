@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Fake drivers on the local backend, moving through the real realtime channels so movement trails show up on the map.
-# usage: scripts/sim-drive.sh <crew id> [users=3] [seconds=300] [route=city|highway]
+# usage: scripts/sim-drive.sh <crew id> [users=3] [seconds=3600] [route=city|highway]
 set -euo pipefail
 crew="${1:?crew id required}"
 users="${2:-3}"
-seconds="${3:-300}"
+seconds="${3:-3600}"
 route="${4:-city}"
 cd "$(dirname "$0")/.."
 eval "$(supabase status -o env | sed 's/^/export /')"
