@@ -36,6 +36,7 @@ const MESSAGES: Record<string, string> = {
   registration_failed: "We couldn't create your account. Try again.",
   deletion_failed: "We couldn't delete your account. Try again.",
   invalid_login: "Email or password is not right.",
+  handoff_unavailable: "Directions are not available right now.",
   network: "Can't reach RDV Garage. Check your connection.",
   unknown_error: "Something went wrong. Try again.",
 };

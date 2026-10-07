@@ -7,6 +7,7 @@ import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
 import { Avatar, Button, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
+import { PinLayer } from "./PinLayer";
 import { holdHeading } from "./heading";
 import { RoadIndex, linesFromFeatures } from "./roadSnap";
 import { appendTrail, snapTrail, trailFeatures, type TrailPoint, type TrailSet } from "./trails";
@@ -365,6 +366,7 @@ export function MapScreen() {
             <Layer type="line" id="trail-glow" style={{ lineColor: ["get", "color"], lineOpacity: ["*", ["get", "a"], 0.35], lineWidth: TRAIL_GLOW_WIDTH, lineBlur: 10, lineCap: "round", lineJoin: "round" }} />
             <Layer type="line" id="trail-line" style={{ lineColor: ["get", "color"], lineOpacity: ["get", "a"], lineWidth: TRAIL_WIDTH, lineCap: "round", lineJoin: "round" }} />
           </GeoJSONSource>
+          <PinLayer />
           <CarLayer cars={cars} zoom={mapZoom} />
         </Map>
 

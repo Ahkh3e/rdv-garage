@@ -14,6 +14,7 @@
     "@rdv/leaderboard": "workspace:*",
     "@rdv/live-location": "workspace:*",
     "@rdv/map": "workspace:*",
+    "@rdv/maps-handoff": "workspace:*",
     "@rdv/notifications": "workspace:*",
     "@rdv/referral": "workspace:*",
     "@react-navigation/bottom-tabs": "^7.20.0",

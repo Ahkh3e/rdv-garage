@@ -19,6 +19,7 @@ const config: ExpoConfig = {
     entitlements: { "keychain-access-groups": ["$(AppIdentifierPrefix)app.rdvgarage.mobile"] },
     infoPlist: {
       UIBackgroundModes: ["location"],
+      LSApplicationQueriesSchemes: ["waze", "comgooglemaps"],
       NSLocationWhenInUseUsageDescription: "RDV Garage shows you on the map and follows you while you drive.",
       NSLocationAlwaysAndWhenInUseUsageDescription:
         "RDV Garage shares your live position with the crews you choose, even when the app is in the background, but only while you are live.",
@@ -72,6 +73,7 @@ const config: ExpoConfig = {
     ],
     ["expo-image-picker", { photosPermission: "Choose a profile photo." }],
     "@maplibre/maplibre-react-native",
+    "./plugins/withMapsQueries",
   ],
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321",
