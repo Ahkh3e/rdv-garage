@@ -2,6 +2,12 @@
 
 The code is complete for 0.0.1. These are the accounts, keys, and one-time steps that only you can do. Nothing here needs code changes.
 
+## Quickest path to a dev test
+
+1. Local, no accounts needed: `docs/LOCAL_RUN.md` runs everything on two iOS simulators against a local Supabase.
+2. On real phones: do sections 1 to 3 below with the **development** Supabase project (accounts auto-confirm, so no email provider is needed yet), build with `npx eas-cli build --profile preview --platform ios` (internal distribution; register each tester's iPhone first), and have testers sign up through an invite you create with the operator toolkit (`ops/README.md`).
+3. Turn on SMTP (section 2, step 4) before anyone signs up in production mode.
+
 ## 1. Accounts
 
 | Account | Why | Cost |
@@ -37,6 +43,12 @@ The code is complete for 0.0.1. These are the accounts, keys, and one-time steps
 3. Apple: in the Apple Developer account register the app id `app.rdvgarage.mobile` with the Associated Domains capability. EAS manages certificates for you when you log in.
 4. Android (later): build with `--platform android`. The map needs no key (MapLibre with OpenFreeMap tiles). Add the app's SHA-256 signing fingerprint to the web build (below).
 5. A development build is required. Expo Go will not work (background location, maps).
+
+### Notifications and the live indicator
+
+- The live indicator is a **Live Activity** on iPhone (lock screen and Dynamic Island). It is built into the development build by the `expo-live-activity` plugin, needs iOS 16.2 or newer, and needs no keys. If a tester has turned off Live Activities for the app in Settings, an ordinary notification is used instead.
+- On Android the indicator is the location service's foreground notification; no setup.
+- Friend-goes-live notifications work while the app is running. A notification when the app is closed needs **push**: an Apple Push key and Firebase credentials registered with EAS, plus the server pieces in the spec repo's `docs/features/notifications.md`. That is not built yet.
 
 ## 4. Link pages (Cloudflare Pages)
 
