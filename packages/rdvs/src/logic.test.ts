@@ -213,7 +213,7 @@ describe("area name", () => {
 
 describe("draft validation", () => {
   const place = { name: "Harbour lot", kind: "Park", address: "1 Main St, Toronto", lat: 43.65, lng: -79.38 };
-  const good: Draft = { title: "Sunday meet", kind: "meet", place, startsAt: NOW + H, durationMin: null, note: "", crewIds: ["c1"], radiusM: 150 };
+  const good: Draft = { title: "Sunday meet", kind: "meet", place, areaName: null, startsAt: NOW + H, durationMin: null, note: "", crewIds: ["c1"], radiusM: 150 };
 
   it("accepts a good draft", () => {
     expect(draftError(good, NOW)).toBeNull();
