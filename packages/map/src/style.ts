@@ -29,7 +29,12 @@ export const MAP_COLORS = {
   labelStrong: "#E6ECF7",
   labelWater: "#4B5568",
   halo: "#0A0C10",
+  poi: "rgba(140,160,196,0.55)",
 } as const;
+
+// The six Nearby categories (docs/features/places.md). Classes and subclasses as they appear in the OpenMapTiles poi layer.
+export const POI_CLASSES = ["fuel", "gas", "gas_station", "restaurant", "fast_food", "food_court", "cafe", "coffee", "coffee_shop", "parking", "car_wash", "charging_station"] as const;
+export const POI_LAYER = "poi";
 
 const w = (...stops: [number, number][]) => ["interpolate", ["exponential", 1.4], ["zoom"], ...stops.flat()] as never;
 
@@ -111,6 +116,23 @@ const baseStyle: StyleSpecification = {
         "text-size": w([13, 9], [18, 11]), "text-letter-spacing": 0.05,
       },
       paint: { "text-color": MAP_COLORS.label, "text-halo-color": MAP_COLORS.halo, "text-halo-width": 1.4 },
+    },
+    {
+      id: POI_LAYER, type: "circle", source: "openmaptiles", "source-layer": "poi", minzoom: 13,
+      filter: ["any", ["in", ["get", "class"], ["literal", [...POI_CLASSES]]], ["in", ["get", "subclass"], ["literal", [...POI_CLASSES]]]],
+      paint: {
+        "circle-color": MAP_COLORS.poi,
+        "circle-radius": w([13, 1.6], [17, 3.2]),
+        "circle-opacity": 0.7,
+        "circle-stroke-color": MAP_COLORS.halo,
+        "circle-stroke-width": 0.8,
+      },
+    },
+    {
+      id: "poi-name", type: "symbol", source: "openmaptiles", "source-layer": "poi", minzoom: 16,
+      filter: ["any", ["in", ["get", "class"], ["literal", [...POI_CLASSES]]], ["in", ["get", "subclass"], ["literal", [...POI_CLASSES]]]],
+      layout: { "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]], "text-font": FONT, "text-size": 10, "text-anchor": "top", "text-offset": [0, 0.7], "text-optional": true },
+      paint: { "text-color": MAP_COLORS.label, "text-halo-color": MAP_COLORS.halo, "text-halo-width": 1.2, "text-opacity": 0.75 },
     },
     {
       id: "water-name", type: "symbol", source: "openmaptiles", "source-layer": "water_name",

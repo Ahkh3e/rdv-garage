@@ -21,6 +21,8 @@
     "./events": "./src/events.ts",
     "./store": "./src/store.ts",
     "./errors": "./src/errors.ts",
-    "./links": "./src/links.ts"
+    "./links": "./src/links.ts",
+    "./places": "./src/places.ts",
+    "./mapBridge": "./src/mapBridge.ts"
   }
 }

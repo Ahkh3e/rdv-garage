@@ -4,6 +4,9 @@ export const TERMS_VERSION = "v1";
 export const DISCLAIMER_SHORT =
   "Drive safely and obey all laws and speed limits. Don't use your phone while driving. Speeds are GPS estimates for fun, not a challenge to speed. You are responsible for how you drive.";
 
+export const DISCLAIMER_PLACES =
+  "Places and meets are added by members. Rendezview does not check them or organize any gathering. Attend at your own risk.";
+
 export const DISCLAIMER_FULL: { title: string; body: string }[] = [
   { title: "You are responsible for your driving", body: "Obey traffic laws, posted speed limits, and road conditions. RDV Garage does not encourage speeding, racing, stunts, or any unsafe or illegal driving." },
   { title: "Don't operate the app while driving", body: "Set up Go live before you start. Once you are live, the map follows you and needs no input. Do not look at or touch your phone while driving. Passengers may use the app." },
