@@ -122,16 +122,21 @@ export function metresPerPoint(zoom: number, lat: number): number {
   return (78271.517 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
 }
 
-// How much to enlarge a car so it is about `px` points long on screen. At street zoom it is life size; zoomed out it is
-// a readable model rather than a speck.
-export function carScale(zoom: number, lat: number, icon: CarIconKey, px = 56): number {
-  return Math.max(1, Math.min(80, (px * metresPerPoint(zoom, lat)) / SPECS[icon].length));
+// Cars are drawn a fixed amount larger than life, and that never changes with zoom. A zoom-dependent size would have to be
+// recomputed on every frame of a pinch and made cars balloon or pop; a fixed size just gets smaller as you zoom out, like
+// everything else on the map. At about this size a car is roughly 60 points long at the following zoom.
+export const CAR_SCALE = 3.4;
+// Below this zoom a car is too small to read, so the map shows a coloured dot for it instead.
+export const MIN_MODEL_ZOOM = 15.2;
+
+export function carScale(): number {
+  return CAR_SCALE;
 }
 
-export function carFeatures(cars: Car3D[], zoom: number): GeoJSON.Feature[] {
+export function carFeatures(cars: Car3D[]): GeoJSON.Feature[] {
   const features: GeoJSON.Feature[] = [];
   for (const car of cars) {
-    const k = carScale(zoom, car.lat, car.icon);
+    const k = carScale();
     const theta = (car.heading * Math.PI) / 180;
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);

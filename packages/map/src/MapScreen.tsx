@@ -7,6 +7,7 @@ import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
 import { Avatar, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
+import { holdHeading } from "./heading";
 import { RoadIndex, linesFromFeatures } from "./roadSnap";
 import { appendTrail, snapTrail, trailFeatures, type TrailPoint, type TrailSet } from "./trails";
 import { FLAT_PITCH, FOLLOW_CAMERA, rdvNightStyle, rdvNightStyleFlat } from "./style";
@@ -118,8 +119,15 @@ export function MapScreen() {
     };
   }, [focused]);
 
-  const easeToMe = useCallback((at: Me, duration = 700) => {
-    if (at.heading !== null) lastHeading.current = at.heading;
+  const lastEase = useRef(0);
+  const easeToMe = useCallback((at: Me, duration?: number) => {
+    // Ease for as long as the last fix took to arrive, so each move ends as the next begins instead of pausing in between.
+    const now = Date.now();
+    const span = duration ?? Math.min(1200, Math.max(250, now - lastEase.current));
+    lastEase.current = now;
+    duration = span;
+    if (at.heading !== null) lastHeading.current = holdHeading(headings.current.me, at.heading);
+    if (at.heading !== null) headings.current.me = lastHeading.current;
     camera.current?.easeTo({
       center: [at.lng, at.lat],
       zoom: followZoom.current,
@@ -153,7 +161,7 @@ export function MapScreen() {
 
   // The 3D cars sit in the map itself, so a heading is a compass heading. A parked car keeps its last heading.
   const headingFor = (id: string, heading: number | null | undefined) => {
-    if (heading !== null && heading !== undefined && heading >= 0) headings.current[id] = heading;
+    if (heading !== null && heading !== undefined && heading >= 0) headings.current[id] = holdHeading(headings.current[id], heading);
     return headings.current[id] ?? 0;
   };
   const others = Object.values(positions).filter(
