@@ -1,5 +1,7 @@
 import type { GeoPoint, Place, Poi } from "@rdv/core";
-import { haversineMeters } from "@rdv/core/geo";
+import { formatDistance, haversineMeters } from "@rdv/core/geo";
+
+export { formatDistance };
 
 export type CategoryId = "fuel" | "food" | "coffee" | "parking" | "carwash" | "ev";
 
@@ -33,9 +35,4 @@ export function nearby(pois: Poi[], category: CategoryId, center: GeoPoint, limi
     .map((poi) => ({ place: { name: poi.name, kind: label, address: null, lat: poi.lat, lng: poi.lng }, meters: haversineMeters(center, poi) }))
     .sort((a, b) => a.meters - b.meters)
     .slice(0, limit);
-}
-
-export function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.max(10, Math.round(meters / 10) * 10)} m`;
-  return `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0)} km`;
 }

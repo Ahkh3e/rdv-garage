@@ -106,6 +106,8 @@ export interface MemberPosition {
   ts: number;
   // Current speed in km/h, only when that person has chosen to show it to the crew (decision 0022). Never stored.
   speedKmh?: number | null;
+  // Horizontal accuracy of the fix in metres, on the device's own position only.
+  accuracyM?: number | null;
 }
 
 export interface LocationStream {
@@ -121,6 +123,11 @@ export interface LiveState {
   crewIds: CrewId[];
 }
 
+// Asks the Go live sheet to open with these crews chosen. The person still taps Start.
+export interface GoLiveRequest {
+  crewIds: CrewId[];
+}
+
 // ---- Map pins and handoff -----------------------------------------------------
 export interface MapPin {
   id: string;
@@ -130,6 +137,8 @@ export interface MapPin {
   kind: string;
   // Index into the crew tints (crewStyle); use the owning crew's styleIndex.
   colorKey: number;
+  // Shows a Live badge on the pin while the thing it marks is happening.
+  live?: boolean;
   // Runs when the pin is tapped. The owning module opens its detail, normally with shell.navigate.
   onPress(): void;
 }
@@ -199,8 +208,11 @@ export interface MapController {
 export interface MapBridge {
   // Center and zoom of the map on screen, null until the map has reported.
   view: Store<MapView | null>;
+  // The device position as the map last saw it, null until it has one.
+  me: Store<GeoPoint | null>;
   attach(controller: MapController | null): Unsubscribe;
   setView(view: MapView): void;
+  setMe(point: GeoPoint | null): void;
   // Points of interest currently rendered, read on the device. Empty when no map is attached.
   pois(): Promise<Poi[]>;
   flyTo(point: GeoPoint, zoom?: number): void;
@@ -245,6 +257,9 @@ export interface Shell {
   crewContext: CrewContext;
   locationStream: LocationStream;
   live: Store<LiveState>;
+  goLiveRequest: Store<GoLiveRequest | null>;
+  // Opens the Go live sheet on the map with these crews preselected; nothing starts until the person taps Start.
+  requestGoLive(crewIds: CrewId[]): void;
   pins: PinRegistry;
   handoff: Handoff;
   setHandoff(handoff: Handoff): void;
@@ -258,7 +273,7 @@ export interface Shell {
   addRoute(route: Route): void;
   addFlag(name: string, defaultValue: boolean): void;
   isEnabled(name: string): boolean;
-  addSlot(slot: string, component: ComponentType, order?: number): void;
+  addSlot(slot: string, component: ComponentType<any>, order?: number): void;
   addMenuItem(item: MenuItem): void;
   addLinkHandler(handler: LinkHandler): void;
   setAuthFlow(component: ComponentType): void;

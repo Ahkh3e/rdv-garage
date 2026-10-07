@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Easing, Keyboard, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Button, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, useShell } from "@rdv/core";
+import { Avatar, Button, CarIcon, Glass, GlassButton, PIN_KIND, RDV_KIND, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, formatDistance, useShell, useStore } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
 import { PinLayer } from "./PinLayer";
 import { poisFromFeatures } from "./pois";
@@ -22,6 +22,7 @@ const SHEET_OVERLAP = 20;
 const MIN_ZOOM = 3;
 const MAX_ZOOM = 19;
 const JUMP_ZOOM = 16;
+const NEAR_DISTANCE_M = 400;
 const ROAD_LAYERS = ["road-service", "road-minor", "road-tertiary", "road-secondary", "road-primary", "road-trunk", "road-motorway"];
 const MIN_SNAP_ZOOM = 13.5;
 // Like a navigation route: the trail is as wide as the road under it, so its width follows the map style's road widths.
@@ -38,12 +39,21 @@ interface Me {
 export function MapScreen() {
   const focused = useIsFocused();
   const shell = useShell();
+  const pinDistance = (pin: { lat: number; lng: number }) => (meNow ? `${formatDistance(haversineMeters(meNow, pin))} away  ·  ` : "");
+  const meNow = useStore(shell.mapBridge.me);
+  const allPins = useStore(shell.pins.store);
+  const droppedPins = allPins.filter((pin) => pin.kind === PIN_KIND);
+  const rdvPins = allPins.filter((pin) => pin.kind === RDV_KIND);
   const navigation = useNavigation<any>();
   const session = useSession();
   const crewState = useCrewState();
   const positions = usePositions();
   const camera = useRef<CameraRef>(null);
   const lastHeading = useRef(0);
+  const moveSeq = useRef(0);
+  // The pitch to restore while a far move has the camera levelled; the newest move restores it.
+  const levelled = useRef<number | null>(null);
+  const center = useRef<{ lat: number; lng: number } | null>(null);
   const zoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const followZoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const [follow, setFollow] = useState(true);
@@ -123,6 +133,35 @@ export function MapScreen() {
     };
   }, [focused]);
 
+  // The native camera fits the target inside the current pitched view, which clamps targets far from where the map is
+  // looking. A far move levels the camera, jumps, then restores the pitch.
+  const moveCamera = (point: { lat: number; lng: number }, zoomTo: number, duration: number) => {
+    const target = { center: [point.lng, point.lat] as [number, number], zoom: zoomTo };
+    const near = center.current !== null && haversineMeters(center.current, point) <= NEAR_DISTANCE_M;
+    const mine = ++moveSeq.current;
+    const restore = levelled.current ?? pitch.current;
+    if (near) {
+      levelled.current = null;
+      camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration });
+      return;
+    }
+    levelled.current = restore;
+    void (async () => {
+      try {
+        await camera.current?.setStop({ pitch: 0, duration: 0 });
+        if (mine !== moveSeq.current) return;
+        camera.current?.jumpTo({ ...target, pitch: 0, bearing: 0 });
+      } catch (error) {
+        console.warn("map camera jump failed", error);
+      } finally {
+        if (mine === moveSeq.current) {
+          levelled.current = null;
+          camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration });
+        }
+      }
+    })();
+  };
+
   useEffect(
     () =>
       shell.mapBridge.attach({
@@ -131,11 +170,15 @@ export function MapScreen() {
           setFollow(false);
           setFollowMember(false);
           setExpanded(true);
-          camera.current?.easeTo({ center: [point.lng, point.lat], zoom: target ?? Math.max(zoom.current, JUMP_ZOOM), pitch: pitch.current, bearing: 0, duration: 700 });
+          moveCamera(point, target ?? Math.max(zoom.current, JUMP_ZOOM), 700);
         },
       }),
     [shell],
   );
+
+  useEffect(() => {
+    if (me) shell.mapBridge.setMe({ lat: me.lat, lng: me.lng });
+  }, [shell, me?.lat, me?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lastEase = useRef(0);
   const easeSpan = useRef(0);
@@ -316,7 +359,7 @@ export function MapScreen() {
     setFollowMember(false);
     setFollow(false);
     setExpanded(true);
-    camera.current?.easeTo({ center: [lng, lat], zoom: JUMP_ZOOM, pitch: view3d ? 45 : FLAT_PITCH, bearing: 0, duration: 800 });
+    moveCamera({ lat, lng }, JUMP_ZOOM, 800);
   };
 
   const rehome = () => {
@@ -366,9 +409,11 @@ export function MapScreen() {
           attribution
           attributionPosition={{ bottom: SHEET_OVERLAP + 6, left: 8 }}
           onDidFinishRenderingMapFully={() => refreshRoads()}
+          onPress={() => Keyboard.dismiss()}
           onLongPress={(event) => shell.mapBridge.longPress({ lat: event.nativeEvent.lngLat[1]!, lng: event.nativeEvent.lngLat[0]! })}
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
+            center.current = { lat: event.nativeEvent.center[1]!, lng: event.nativeEvent.center[0]! };
             setMapZoom(Math.round(event.nativeEvent.zoom * 4) / 4);
             refreshRoads(event.nativeEvent.center as [number, number]);
             shell.mapBridge.setView({ lat: event.nativeEvent.center[1]!, lng: event.nativeEvent.center[0]!, zoom: event.nativeEvent.zoom });
@@ -488,6 +533,53 @@ export function MapScreen() {
           ) : members.length === 0 && crewState.loaded ? (
             <Text variant="body" muted>{crewState.selected.length === 0 ? "Switch on a crew in Crews to see its members." : "Your crews have no other members yet."}</Text>
           ) : null}
+          {droppedPins.length > 0 ? <Text variant="caption" muted style={styles.listHeading}>PINS</Text> : null}
+          {droppedPins.map((pin, i) => (
+            <Pressable
+              key={pin.id}
+              testID={`map-pin-${pin.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Show pin ${pin.label} on the map`}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => undefined);
+                shell.mapBridge.flyTo({ lat: pin.lat, lng: pin.lng });
+                shell.pins.press(pin.id);
+              }}
+              style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }]}
+            >
+              <View style={[styles.pinBadge, { backgroundColor: crewStyle(pin.colorKey).tint }]}>
+                <Feather name="map-pin" size={20} color={colors.onAccent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="headline" numberOfLines={1}>{pin.label}</Text>
+                <Text variant="caption" color={colors.muted} numberOfLines={1}>{pinDistance(pin)}Dropped pin</Text>
+              </View>
+            </Pressable>
+          ))}
+          {rdvPins.length > 0 ? <Text variant="caption" muted style={styles.listHeading}>RDVS</Text> : null}
+          {rdvPins.map((pin, i) => (
+            <Pressable
+              key={pin.id}
+              testID={`map-rdv-${pin.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Show RDV ${pin.label} on the map`}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => undefined);
+                shell.mapBridge.flyTo({ lat: pin.lat, lng: pin.lng });
+                shell.pins.press(pin.id);
+              }}
+              style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }]}
+            >
+              <View style={[styles.pinBadge, { backgroundColor: crewStyle(pin.colorKey).tint }]}>
+                <Feather name="flag" size={20} color={colors.onAccent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="headline" numberOfLines={1}>{pin.label}</Text>
+                <Text variant="caption" color={colors.muted} numberOfLines={1}>{pinDistance(pin)}RDV</Text>
+              </View>
+            </Pressable>
+          ))}
+          {(droppedPins.length > 0 || rdvPins.length > 0) && members.length > 0 ? <Text variant="caption" muted style={styles.listHeading}>MEMBERS</Text> : null}
           {members.map((m, i) => {
             const tint = crewStyle(m.styleIndex).tint;
             const position = m.position;
@@ -543,7 +635,7 @@ const styles = StyleSheet.create({
   top: { position: "absolute", top: 60, left: 16, right: 80, alignItems: "flex-start" },
   pill: { flexDirection: "row", alignItems: "center", gap: 8, height: 32, paddingHorizontal: 12, borderRadius: radii.pill },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
-  notice: { position: "absolute", top: 152, left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
+  notice: { position: "absolute", top: 208, left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
   controls: { position: "absolute", right: 16, bottom: SHEET_OVERLAP + 96, gap: 12 },
   sheet: { flex: 1, marginTop: -SHEET_OVERLAP, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, borderBottomWidth: 0 },
   handleHit: { alignItems: "center", paddingTop: 8, paddingBottom: 8 },
@@ -552,6 +644,8 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { paddingHorizontal: 8, paddingBottom: 96 },
   member: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 12, borderRadius: radii.sm },
+  listHeading: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4, letterSpacing: 1 },
+  pinBadge: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   memberDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
   firstCrew: { gap: 6, paddingHorizontal: 12, paddingTop: 8 },
   status: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 64, justifyContent: "flex-end" },

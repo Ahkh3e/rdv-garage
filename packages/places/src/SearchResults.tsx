@@ -14,7 +14,7 @@ export function useSearch(): Search {
   return search;
 }
 
-export function SearchField({ search, onFocus, onClear, autoFocus }: { search: Search; onFocus?: () => void; onClear?: () => void; autoFocus?: boolean }) {
+export function SearchField({ search, onFocus, onBlur, onClear, autoFocus }: { search: Search; onFocus?: () => void; onBlur?: () => void; onClear?: () => void; autoFocus?: boolean }) {
   const { query } = useStore(search.state);
   return (
     <View style={styles.field}>
@@ -24,6 +24,7 @@ export function SearchField({ search, onFocus, onClear, autoFocus }: { search: S
         value={query}
         onChangeText={search.setQuery}
         onFocus={onFocus}
+        onBlur={onBlur}
         autoFocus={autoFocus}
         placeholder="Search places and addresses"
         placeholderTextColor={colors.subtle}

@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Avatar, Button, Card, Divider, Row, Screen, Text, colors, crewStyle, crewUrl, messageFor, useCrewState, useShell, useSession } from "@rdv/core";
+import { Avatar, Button, Card, Divider, Row, Screen, Slot, Text, colors, crewStyle, crewUrl, messageFor, useCrewState, useShell, useSession } from "@rdv/core";
 import { loadCrews } from "../data";
 
 export function CrewDetail({ navigation, route }: { navigation: any; route: { params: { id: string } } }) {
@@ -66,6 +66,7 @@ export function CrewDetail({ navigation, route }: { navigation: any; route: { pa
           <Button title="Regenerate link" variant="secondary" onPress={() => confirm("Regenerate link?", "The old link will stop working.", () => run(() => shell.backend.rpc("crews", "regenerate_crew_link", { p_crew: crew.id })), "Regenerate")} />
         </Card>
       ) : null}
+      <Slot name="crew.detail" crewId={crew.id} />
       <Text variant="label" muted>Members</Text>
       <Card>
         {crew.members.map((m, i) => (

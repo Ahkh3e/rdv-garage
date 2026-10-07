@@ -9,7 +9,7 @@ import { createNavigationContainerRef, DarkTheme, NavigationContainer } from "@r
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import type { AppConfig } from "./config";
 import type {
-  Backend, CrewContext, Geocoder, Handoff, PlaceUi, CrewContextState, CrewSummary, LinkHandler, LiveState, LocationStream, MemberPosition,
+  Backend, CrewContext, Geocoder, GoLiveRequest, Handoff, PlaceUi, CrewContextState, CrewSummary, LinkHandler, LiveState, LocationStream, MemberPosition,
   MenuItem, Route, SessionState, Shell, Tab,
 } from "./contracts";
 import { AppError } from "./errors";
@@ -28,7 +28,7 @@ export interface ShellRuntime extends Shell {
   tabs: Tab[];
   routes: Route[];
   menu: MenuItem[];
-  slots: Map<string, { component: ComponentType; order: number }[]>;
+  slots: Map<string, { component: ComponentType<any>; order: number }[]>;
   authFlow: ComponentType | null;
   navRef: ReturnType<typeof createNavigationContainerRef>;
   flushNavigation(): void;
@@ -78,6 +78,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
   const events = createEvents();
   const session = createStore<SessionState>({ status: "loading" });
   const live = createStore<LiveState>({ live: false, sessionId: null, crewIds: [] });
+  const goLiveRequest = createStore<GoLiveRequest | null>(null);
   const flags = new Map<string, boolean>();
   const linkHandlers: LinkHandler[] = [];
   const pending: { route: string; params?: Record<string, unknown> }[] = [];
@@ -119,6 +120,11 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
     events,
     session,
     live,
+    goLiveRequest,
+    requestGoLive(crewIds) {
+      goLiveRequest.set({ crewIds });
+      shell.navigate("Tabs", { screen: "Map" });
+    },
     crewContext: createCrewContext(events),
     locationStream: createLocationStream(),
     pins: createPinRegistry(),
@@ -259,13 +265,13 @@ export function useSignedInProfile() {
   return state;
 }
 
-export function Slot({ name }: { name: string }) {
+export function Slot({ name, ...props }: { name: string; [prop: string]: unknown }) {
   const shell = useShell();
   const items = shell.slots.get(name) ?? [];
   return (
     <>
       {items.map(({ component: C }, i) => (
-        <C key={`${name}-${i}`} />
+        <C key={`${name}-${i}`} {...props} />
       ))}
     </>
   );

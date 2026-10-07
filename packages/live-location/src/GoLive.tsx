@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Button, Chip, Disclaimer, Glass, PulseDot, Sheet, Text, Toggle, colors, crewStyle, messageFor, radii, useCrewState, useLiveState, useShell } from "@rdv/core";
+import { Button, Chip, Disclaimer, Glass, PulseDot, Sheet, Text, Toggle, colors, crewStyle, messageFor, radii, useCrewState, useLiveState, useShell, useStore } from "@rdv/core";
 import type { LiveController } from "./controller";
 import { openSettings } from "./permissions";
 
@@ -20,8 +20,25 @@ export function GoLiveControl() {
   const [error, setError] = useState<string | null>(null);
   const [needsSettings, setNeedsSettings] = useState(false);
 
+  const request = useStore(shell.goLiveRequest);
+  const preset = useRef(false);
+
   useEffect(() => {
-    if (open) setPicked(crewState.selected.length ? crewState.selected : crewState.crews.map((c) => c.id).slice(0, 1));
+    if (!request) return;
+    shell.goLiveRequest.set(null);
+    if (!controller || live.live) return;
+    const mine = request.crewIds.filter((id) => crewState.crews.some((c) => c.id === id));
+    if (mine.length === 0) return;
+    preset.current = !open;
+    setPicked(mine);
+    setOpen(true);
+  }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (open) {
+      if (preset.current) preset.current = false;
+      else setPicked(crewState.selected.length ? crewState.selected : crewState.crews.map((c) => c.id).slice(0, 1));
+    }
     setError(null);
     setNeedsSettings(false);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,7 +135,7 @@ export function GoLiveControl() {
 }
 
 const styles = StyleSheet.create({
-  dock: { position: "absolute", left: 16, right: 16, bottom: 20, alignItems: "center" },
+  dock: { position: "absolute", left: 16, right: 16, bottom: 35, alignItems: "center" },
   cta: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.accent, paddingHorizontal: 28, minHeight: 56, minWidth: 168, justifyContent: "center", borderRadius: radii.pill, shadowColor: "#000", shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
   livePill: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "stretch", borderRadius: radii.md, paddingVertical: 10, paddingLeft: 12, paddingRight: 8 },
   crewRow: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 56, paddingHorizontal: 14, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.fill },
