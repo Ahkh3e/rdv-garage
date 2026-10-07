@@ -93,7 +93,7 @@ export async function simLive(ctx: Ctx, opts: SimLiveOptions): Promise<SimLiveRe
         }
       });
     });
-    const walker = new Walker(ROUTES[opts.route], opts.route, seed + i * 101, i * 2);
+    const walker = new Walker(ROUTES[opts.route], opts.route, seed + i * 101, Math.floor((ROUTES[opts.route].length * i) / Math.max(1, opts.users)));
     drivers.push({ profile, client, channel, sessionId, walker, maxKmh: 0, distanceM: 0, last: null, sent: 0, quiet: i < (opts.staleUsers ?? 0) ? false : false });
   }
   const staleCount = Math.min(opts.staleUsers ?? 0, drivers.length);

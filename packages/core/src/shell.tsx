@@ -258,7 +258,7 @@ function TabsScreen() {
   const tabs = useMemo(() => [...shell.tabs].sort((a, b) => a.order - b.order), [shell]);
   return (
     <Tabs.Navigator
-      initialRouteName={tabs.find((t) => t.id === "Crews")?.id ?? tabs[0]?.id}
+      initialRouteName={tabs.find((t) => t.id === "Map")?.id ?? tabs[0]?.id}
       screenListeners={{ tabPress: () => void Haptics.selectionAsync().catch(() => undefined) }}
       screenOptions={{
         headerShown: false,
