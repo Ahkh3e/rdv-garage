@@ -4,9 +4,10 @@ import { useIsFocused } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import { Camera, Map, ViewAnnotation, type CameraRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Glass, GlassButton, Slot, Text, colors, crewStyle, radii, useCrewState, usePositions, useSession } from "@rdv/core";
+import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef } from "@maplibre/maplibre-react-native";
+import { Avatar, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
 import { MemberMarker, SelfMarker } from "./MemberMarker";
+import { appendTrail, trailFeatures, type TrailPoint, type TrailSet } from "./trails";
 import { FLAT_PITCH, FOLLOW_CAMERA, rdvNightStyle, rdvNightStyleFlat } from "./style";
 
 const TORONTO: [number, number] = [-79.3832, 43.6532];
@@ -36,6 +37,8 @@ export function MapScreen() {
   const [follow, setFollow] = useState(true);
   const [view3d, setView3d] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  const trails = useRef<Record<string, TrailSet>>({});
+  const [trailTick, setTrailTick] = useState(0);
   const [followMember, setFollowMember] = useState(false);
   const pitch = useRef<number>(FOLLOW_CAMERA.pitch);
   const [me, setMe] = useState<Me | null>(null);
@@ -78,9 +81,18 @@ export function MapScreen() {
       if (!alive) return;
       if (result.status !== "granted") return setPermission("denied");
       setPermission("granted");
+      let previous: { lat: number; lng: number } | null = null;
+      let derived: number | null = null;
       const watcher = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, (loc) => {
-        const moving = (loc.coords.speed ?? 0) > 2 && loc.coords.heading !== null && loc.coords.heading >= 0;
-        setMe({ lat: loc.coords.latitude, lng: loc.coords.longitude, heading: moving ? loc.coords.heading : null });
+        const here = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+        // Some phones and simulators report no heading. Fall back to the direction of travel between two fixes.
+        if (previous && haversineMeters(previous, here) >= 4) {
+          derived = bearingDegrees(previous, here);
+          previous = here;
+        } else if (!previous) previous = here;
+        const reported = loc.coords.heading !== null && loc.coords.heading >= 0 ? loc.coords.heading : null;
+        const moving = (loc.coords.speed ?? 0) > 2 || derived !== null;
+        setMe({ ...here, heading: moving ? (reported ?? derived) : null });
       });
       if (!alive) return watcher.remove();
       sub = watcher;
@@ -125,6 +137,23 @@ export function MapScreen() {
   const others = Object.values(positions).filter(
     (p) => p.userId !== myId && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
+
+  // Movement trails: the last few minutes of positions already shared with the crew, kept in memory only.
+  useEffect(() => {
+    const t = Date.now();
+    const next: Record<string, TrailSet> = {};
+    for (const p of others) {
+      const info = lookup.get(p.userId);
+      if (!info) continue;
+      const point: TrailPoint = { lng: p.lng, lat: p.lat, ts: p.ts };
+      next[p.userId] = { color: crewStyle(info.styleIndex).tint, points: appendTrail(trails.current[p.userId]?.points ?? [], point, t) };
+    }
+    if (me) next.me = { color: colors.accentBright, points: appendTrail(trails.current.me?.points ?? [], { lng: me.lng, lat: me.lat, ts: t }, t) };
+    trails.current = next;
+    setTrailTick((n) => n + 1);
+  }, [positions, crewState.selected, me]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const trailData = useMemo(() => trailFeatures(trails.current, now), [trailTick, now]);
 
   const selectedPosition = selected ? others.find((p) => p.userId === selected) ?? null : null;
   const selectedInfo = selected ? lookup.get(selected) ?? null : null;
@@ -234,6 +263,10 @@ export function MapScreen() {
           }}
         >
           <Camera ref={camera} initialViewState={{ center: TORONTO, zoom: 11.5 }} />
+          <GeoJSONSource id="trails" data={trailData}>
+            <Layer type="line" id="trail-glow" style={{ lineColor: ["get", "color"], lineOpacity: ["*", ["get", "a"], 0.45], lineWidth: 10, lineBlur: 8, lineCap: "round", lineJoin: "round" }} />
+            <Layer type="line" id="trail-line" style={{ lineColor: ["get", "color"], lineOpacity: ["get", "a"], lineWidth: 3.5, lineCap: "round", lineJoin: "round" }} />
+          </GeoJSONSource>
           {me ? (
             <ViewAnnotation id="me" lngLat={[me.lng, me.lat]} anchor="center">
               <SelfMarker following={follow} />
