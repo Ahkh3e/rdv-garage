@@ -1,6 +1,7 @@
 import { Alert } from "react-native";
 import type { Module } from "@rdv/core";
 import { AuthFlow } from "./AuthFlow";
+import { CarPicker } from "./screens/CarPicker";
 import { ChangePassword } from "./screens/ChangePassword";
 import { DeleteAccount } from "./screens/DeleteAccount";
 import { Devices } from "./screens/Devices";
@@ -20,6 +21,7 @@ export const accounts: Module = {
     shell.setAuthFlow(AuthFlow);
     shell.addTab({ id: "Me", title: "Me", icon: "person-circle-outline", order: 40, component: Me });
     shell.addRoute({ name: "EditProfile", component: EditProfile, title: "Edit profile" });
+    shell.addRoute({ name: "CarPicker", component: CarPicker, title: "Your car" });
     shell.addRoute({ name: "ChangePassword", component: ChangePassword, title: "Change password" });
     shell.addRoute({ name: "Devices", component: Devices, title: "Devices" });
     shell.addRoute({ name: "Legal", component: Legal, title: "Safety terms" });

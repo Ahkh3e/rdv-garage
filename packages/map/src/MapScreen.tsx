@@ -5,7 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
+import { Avatar, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
 import { GlidingAnnotation } from "./GlidingAnnotation";
 import { MemberMarker, SelfMarker } from "./MemberMarker";
 import { RoadIndex, linesFromFeatures } from "./roadSnap";
@@ -43,6 +43,8 @@ export function MapScreen() {
   const zoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const followZoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const [follow, setFollow] = useState(true);
+  const [bearing, setBearing] = useState(0);
+  const headings = useRef<Record<string, number>>({});
   const [view3d, setView3d] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const mapRef = useRef<MapRef>(null);
@@ -135,19 +137,26 @@ export function MapScreen() {
   }, [me, follow, easeToMe]);
 
   const lookup = useMemo(() => {
-    const map = new globalThis.Map<string, { handle: string; avatarPath: string | null; styleIndex: number; crewNames: string[] }>();
+    const map = new globalThis.Map<string, { handle: string; avatarPath: string | null; carIcon: string; styleIndex: number; crewNames: string[] }>();
     for (const crew of crewState.crews) {
       if (!crewState.selected.includes(crew.id)) continue;
       for (const member of crew.members) {
         const known = map.get(member.userId);
         if (known) known.crewNames.push(crew.name);
-        else map.set(member.userId, { handle: member.handle, avatarPath: member.avatarPath, styleIndex: crew.styleIndex, crewNames: [crew.name] });
+        else map.set(member.userId, { handle: member.handle, avatarPath: member.avatarPath, carIcon: member.carIcon, styleIndex: crew.styleIndex, crewNames: [crew.name] });
       }
     }
     return map;
   }, [crewState]);
 
   const myId = session.status === "signedIn" ? session.userId : null;
+  const myIcon = session.status === "signedIn" ? session.profile.carIcon : "gt";
+
+  // A parked car keeps its last heading, and the car turns relative to the map so it points the way it is travelling.
+  const rotationFor = (id: string, heading: number | null | undefined) => {
+    if (heading !== null && heading !== undefined && heading >= 0) headings.current[id] = heading;
+    return (((headings.current[id] ?? 0) - bearing) % 360 + 360) % 360;
+  };
   const others = Object.values(positions).filter(
     (p) => p.userId !== myId && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
@@ -321,6 +330,7 @@ export function MapScreen() {
           onDidFinishRenderingMapFully={() => refreshRoads()}
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
+            setBearing(event.nativeEvent.bearing ?? 0);
             refreshRoads(event.nativeEvent.center as [number, number]);
             // Dragging or pinching the map by hand ends follow mode; the home button brings it back.
             if (event.nativeEvent.userInteraction) {
@@ -336,14 +346,14 @@ export function MapScreen() {
           </GeoJSONSource>
           {me ? (
             <GlidingAnnotation id="me" target={headPosition("me", me)} ms={450}>
-              <SelfMarker following={follow} />
+              <SelfMarker carIcon={myIcon} rotation={rotationFor("me", me.heading)} />
             </GlidingAnnotation>
           ) : null}
           {others.map((p) => {
             const info = lookup.get(p.userId)!;
             return (
               <GlidingAnnotation key={p.userId} id={p.userId} target={headPosition(p.userId, p)}>
-                <MemberMarker handle={info.handle} avatarPath={info.avatarPath} styleIndex={info.styleIndex} stale={now - p.ts > FADE_AFTER_MS} />
+                <MemberMarker handle={info.handle} carIcon={info.carIcon} styleIndex={info.styleIndex} stale={now - p.ts > FADE_AFTER_MS} rotation={rotationFor(p.userId, p.heading)} />
               </GlidingAnnotation>
             );
           })}
@@ -463,10 +473,24 @@ export function MapScreen() {
                   <Text variant="headline" numberOfLines={1}>@{m.handle}</Text>
                   <Text variant="caption" color={colors.muted} numberOfLines={1}>{m.crewNames.join(", ")}</Text>
                 </View>
+                <CarIcon icon={m.carIcon} size={22} color={position ? colors.muted : colors.disabled} />
                 {position ? (
                   <View style={styles.status}>
-                    <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accentBright : colors.subtle }]} />
-                    <Text variant="caption" color={fresh ? colors.text : colors.subtle}>{fresh ? "Live" : "Idle"}</Text>
+                    {fresh && position.speedKmh !== null && position.speedKmh !== undefined ? (
+                      position.speedKmh < 3 ? (
+                        <Text variant="caption" color={colors.muted}>Parked</Text>
+                      ) : (
+                        <View style={styles.speed}>
+                          <Text variant="numeral" style={{ fontSize: 18, lineHeight: 22 }}>{position.speedKmh}</Text>
+                          <Text variant="caption" color={colors.subtle}>km/h</Text>
+                        </View>
+                      )
+                    ) : (
+                      <>
+                        <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accentBright : colors.subtle }]} />
+                        <Text variant="caption" color={fresh ? colors.text : colors.subtle}>{fresh ? "Live" : "Idle"}</Text>
+                      </>
+                    )}
                   </View>
                 ) : (
                   <Text variant="caption" color={colors.subtle}>Offline</Text>
@@ -496,7 +520,8 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 8, paddingBottom: 96 },
   member: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 12, borderRadius: radii.sm },
   memberDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
-  status: { flexDirection: "row", alignItems: "center", gap: 6 },
+  status: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 64, justifyContent: "flex-end" },
+  speed: { flexDirection: "row", alignItems: "baseline", gap: 4 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   card: { position: "absolute", left: 16, right: 76, bottom: SHEET_OVERLAP + 92 },
   cardBody: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: radii.xl, borderCurve: "continuous", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },

@@ -4,6 +4,7 @@ export * from "./errors";
 export * from "./events";
 export * from "./store";
 export * from "./theme";
+export * from "./carIcons";
 export * from "./legal";
 export * from "./week";
 export * from "./geo";

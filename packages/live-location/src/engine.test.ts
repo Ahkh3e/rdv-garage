@@ -58,6 +58,22 @@ describe("LiveEngine", () => {
     expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(4);
   });
 
+  it("sends speed in the position only when the person chose to share it, and 0 when parked", async () => {
+    const { engine, log, advance, fix } = setup();
+    await engine.start(["a"], { shareSpeed: true });
+    engine.onFix(fix({ speedMs: 25 }));
+    const first = log.broadcasts.find((b) => b.event === "pos")!;
+    expect(first.payload.speed_kmh).toBe(90);
+    advance(60_000);
+    engine.rebroadcast(advance(0) + 20_000);
+    const parked = log.broadcasts.filter((b) => b.event === "pos").at(-1)!;
+    expect(parked.payload.speed_kmh).toBe(0);
+    const off = setup();
+    await off.engine.start(["a"]);
+    off.engine.onFix(off.fix({ speedMs: 25 }));
+    expect("speed_kmh" in off.log.broadcasts[0]!.payload).toBe(false);
+  });
+
   it("broadcasts every 15 seconds while stationary", async () => {
     const { engine, log, advance, fix } = setup();
     await engine.start(["a"]);

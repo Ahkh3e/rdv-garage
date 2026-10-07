@@ -6,7 +6,7 @@ import { ensureLocationPermission, type PermissionResult } from "./permissions";
 import { setFixSink, startUpdates, stopUpdates } from "./task";
 
 export interface LiveController {
-  goLive(crewIds: CrewId[]): Promise<PermissionResult>;
+  goLive(crewIds: CrewId[], options?: { shareSpeed?: boolean }): Promise<PermissionResult>;
   stop(): Promise<void>;
   liveCrews(): CrewId[];
 }
@@ -64,7 +64,7 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
     if (sessionId) shell.events.emit({ type: "session.ended", sessionId });
   }
 
-  async function goLive(crewIds: CrewId[]): Promise<PermissionResult> {
+  async function goLive(crewIds: CrewId[], options: { shareSpeed?: boolean } = {}): Promise<PermissionResult> {
     const session = shell.session.get();
     if (session.status !== "signedIn" || run || starting) return "denied";
     starting = true;
@@ -79,7 +79,7 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
       const releases = new Map<CrewId, () => void>(crewIds.map((id) => [id, hub.acquire(id)]));
       const current: Run = { engine, releases, timers: [] };
       try {
-        const sessionId = await engine.start(crewIds);
+        const sessionId = await engine.start(crewIds, { shareSpeed: options.shareSpeed ?? false });
         if (cancelled()) throw new Error("cancelled");
         const names = shell.crewContext.store.get().crews.filter((c) => crewIds.includes(c.id)).map((c) => c.name);
         setFixSink((fix: Fix) => engine.onFix(fix));

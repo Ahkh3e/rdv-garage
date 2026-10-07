@@ -46,6 +46,7 @@ export class LiveEngine {
   private distanceM = 0;
   private lastFix: Fix | null = null;
   private lastBroadcast = 0;
+  private shareSpeed = false;
   private sent: { lat: number; lng: number }[] = [];
   private lastTick = 0;
   private tickCount = 0;
@@ -66,7 +67,9 @@ export class LiveEngine {
     return this.moving;
   }
 
-  async start(crewIds: string[]): Promise<string> {
+  // shareSpeed puts the current speed in the crew-only position broadcast (decision 0022). It is never stored.
+  async start(crewIds: string[], options: { shareSpeed?: boolean } = {}): Promise<string> {
+    this.shareSpeed = options.shareSpeed ?? false;
     this.sessionId = await this.deps.startSession(crewIds);
     this.crewIds = crewIds;
     const now = this.deps.now();
@@ -115,10 +118,19 @@ export class LiveEngine {
       this.sent = [...this.sent.slice(-1), { lat: fix.lat, lng: fix.lng }];
       for (const crewId of this.crewIds) {
         // Speed is never broadcast: it is shown after the session, not live (decision 0007).
-        this.deps.broadcast(crewId, "pos", { user_id: this.deps.userId, lat: fix.lat, lng: fix.lng, heading: fix.heading, ts: fix.ts });
+        this.deps.broadcast(crewId, "pos", this.payload(fix, fix.ts));
       }
     }
     void this.maybeTick(this.deps.now());
+  }
+
+  private payload(fix: Fix, ts: number, parked = false): Record<string, unknown> {
+    const base: Record<string, unknown> = { user_id: this.deps.userId, lat: fix.lat, lng: fix.lng, heading: fix.heading, ts };
+    if (this.shareSpeed) {
+      const kmh = parked ? 0 : fix.speedMs !== null && fix.speedMs >= 0 ? Math.round(msToKmh(fix.speedMs)) : null;
+      if (kmh !== null) base.speed_kmh = kmh;
+    }
+    return base;
   }
 
   // True when the path from the last broadcast point to this fix points a clearly different way than the segment before it.
@@ -142,7 +154,7 @@ export class LiveEngine {
     this.lastBroadcast = now;
     const f = this.lastFix;
     for (const crewId of this.crewIds) {
-      this.deps.broadcast(crewId, "pos", { user_id: this.deps.userId, lat: f.lat, lng: f.lng, heading: f.heading, ts: now });
+      this.deps.broadcast(crewId, "pos", this.payload(f, now, true));
     }
     this.deps.publishSelf({ lat: f.lat, lng: f.lng, heading: f.heading, ts: now, crewIds: this.crewIds });
   }

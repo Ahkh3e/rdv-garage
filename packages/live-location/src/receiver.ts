@@ -7,7 +7,7 @@ const DROP_AFTER_MS = 5 * 60 * 1000;
 export function startReceiver(shell: Shell, hub: ChannelHub, extraCrews: () => CrewId[]): () => void {
   const subscriptions = new Map<CrewId, { release: () => void; unlisten: () => void }>();
   const memberCrews = new Map<string, Set<CrewId>>();
-  const lastPosition = new Map<string, { lat: number; lng: number; heading: number | null; ts: number }>();
+  const lastPosition = new Map<string, { lat: number; lng: number; heading: number | null; speedKmh: number | null; ts: number }>();
 
   let lastRefreshAsk = 0;
 
@@ -46,7 +46,7 @@ export function startReceiver(shell: Shell, hub: ChannelHub, extraCrews: () => C
     crews.add(crewId);
     memberCrews.set(userId, crews);
     // Stamped with the time it arrived here, not the sender's clock, which can be wrong by minutes.
-    lastPosition.set(userId, { lat: payload.lat, lng: payload.lng, heading: typeof payload.heading === "number" ? payload.heading : null, ts: Date.now() });
+    lastPosition.set(userId, { lat: payload.lat, lng: payload.lng, heading: typeof payload.heading === "number" ? payload.heading : null, speedKmh: typeof payload.speed_kmh === "number" && payload.speed_kmh >= 0 ? payload.speed_kmh : null, ts: Date.now() });
     publish(userId);
   };
 

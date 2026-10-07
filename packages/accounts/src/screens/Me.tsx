@@ -1,6 +1,6 @@
 import { Alert, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Avatar, Card, Divider, Row, Screen, Text, colors, useShell, useSession } from "@rdv/core";
+import { Avatar, Card, CarIcon, Divider, Row, Screen, Text, colors, useShell, useSession } from "@rdv/core";
 
 export function Me({ navigation }: { navigation: any }) {
   const shell = useShell();
@@ -19,6 +19,8 @@ export function Me({ navigation }: { navigation: any }) {
       </View>
       <Card>
         <Row testID="me-edit" title="Edit profile" left={icon("person-outline")} right={chevron} onPress={() => navigation.navigate("EditProfile")} />
+        <Divider />
+        <Row testID="me-car" title="Your car" left={<CarIcon icon={profile.carIcon} size={24} color={colors.muted} />} right={chevron} onPress={() => navigation.navigate("CarPicker")} />
         <Divider />
         <Row title="Change password" left={icon("key-outline")} right={chevron} onPress={() => navigation.navigate("ChangePassword")} />
         <Divider />

@@ -7,6 +7,21 @@ interface CrewRow {
 }
 
 describe("crews", () => {
+  it("shares a chosen car with crew members, rejects unknown cars, and hides it from strangers", async () => {
+    const owner = await createUser();
+    const member = await createUser();
+    const stranger = await createUser();
+    const crew = await createCrew(owner, "Garage");
+    await callOk(member.client, "crews", "join_crew", { p_link_code: crew.link_code });
+    expect((await call(member.client, "accounts", "update_profile", { p_car_icon: "hyper" })).error).toBeNull();
+    expect((await call(member.client, "accounts", "update_profile", { p_car_icon: "tractor" })).error).toBe("icon_invalid");
+    const view = await callOk<{ members: { handle: string; car_icon: string }[] }[]>(owner.client, "crews", "list_my_crews");
+    expect(view[0]!.members.find((m) => m.handle === member.handle)!.car_icon).toBe("hyper");
+    expect(view[0]!.members.find((m) => m.handle === owner.handle)!.car_icon).toBe("gt");
+    const peek = await stranger.client.schema("accounts").from("profiles").select("car_icon").eq("handle", member.handle);
+    expect(peek.data ?? []).toHaveLength(0);
+  });
+
   it("creates, joins by link, lists, and selects", async () => {
     const owner = await createUser();
     const member = await createUser();

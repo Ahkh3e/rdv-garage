@@ -37,6 +37,7 @@ create table accounts.profiles (
   id uuid primary key,
   handle text not null,
   avatar_path text,
+  car_icon text not null default 'gt' check (car_icon in ('gt','formula','proto','rally','muscle','hyper','drift','kart')),
   invited_by uuid references accounts.profiles (id),
   invite_id uuid,
   status text not null default 'active' check (status in ('active', 'suspended', 'deleted')),

@@ -10,6 +10,7 @@ const MESSAGES: Record<string, string> = {
   expired_invite: "That invite has expired. Ask the person who shared it for a new one.",
   revoked_invite: "That invite is no longer active. Ask the person who shared it for a new one.",
   handle_taken: "That handle is taken.",
+  icon_invalid: "That car is not available.",
   handle_invalid: "Handles are 3 to 20 characters: lowercase letters, numbers, and underscores.",
   handle_cooldown: "You can change your handle once every 30 days.",
   email_invalid: "Enter a valid email address.",
