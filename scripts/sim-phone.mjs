@@ -21,9 +21,9 @@ for (const p of ordered) {
     last = p;
   }
 }
-const lengthM = picked.slice(1).reduce((sum, p, i) => sum + Math.hypot((p.lat - picked[i].lat) * 111320, (p.lng - picked[i].lng) * 80000), 0);
-const lapMs = Math.ceil((lengthM / Number(speed)) * 1000) + 1500;
-const args = ["simctl", "location", udid, "start", `--speed=${speed}`, "--interval=0.5", ...picked.map((p) => `${p.lat},${p.lng}`)];
+const lengthM = picked.slice(1).reduce((sum, p, i) => sum + Math.hypot((p.lat - picked[i].lat) * 111320, (p.lng - picked[i].lng) * 80540), 0);
+const lapMs = Math.ceil((lengthM / Number(speed)) * 1000 * 1.02) + 4000;
+const args = ["simctl", "location", udid, "start", `--speed=${speed}`, "--distance=6", ...picked.map((p) => `${p.lat},${p.lng}`)];
 console.log(`${name}: ${picked.length} waypoints at ${speed} m/s, ${Math.round(lapMs / 1000)} s per lap, looping`);
 const lap = () => {
   spawnSync("xcrun", args, { stdio: "ignore" });

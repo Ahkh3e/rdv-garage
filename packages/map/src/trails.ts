@@ -76,7 +76,7 @@ export function snapTrail(points: TrailPoint[], index: RoadIndex | null): void {
     if (p.snap) continue;
     const prev = points[i - 1];
     const heading = prev ? bearingDegrees(prev, p) : null;
-    const snap = index.snap(p, heading);
+    const snap = index.snap(p, heading, 25, prev?.snap?.line ?? null);
     if (!snap) continue;
     p.snap = snap;
     p.via = prev?.snap ? (index.between(prev.snap, snap) ?? undefined) : undefined;

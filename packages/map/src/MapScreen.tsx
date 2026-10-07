@@ -471,15 +471,11 @@ export function MapScreen() {
                 <CarIcon icon={m.carIcon} size={22} color={position ? colors.muted : colors.disabled} />
                 {position ? (
                   <View style={styles.status}>
-                    {fresh && position.speedKmh !== null && position.speedKmh !== undefined ? (
-                      position.speedKmh < 3 ? (
-                        <Text variant="caption" color={colors.muted}>Parked</Text>
-                      ) : (
-                        <View style={styles.speed}>
-                          <Text variant="numeral" style={{ fontSize: 18, lineHeight: 22 }}>{position.speedKmh}</Text>
-                          <Text variant="caption" color={colors.subtle}>km/h</Text>
-                        </View>
-                      )
+                    {fresh && position.speedKmh !== null && position.speedKmh !== undefined && position.speedKmh >= 3 ? (
+                      <View style={styles.speed}>
+                        <Text variant="numeral" style={{ fontSize: 18, lineHeight: 22 }}>{position.speedKmh}</Text>
+                        <Text variant="caption" color={colors.subtle}>km/h</Text>
+                      </View>
                     ) : (
                       <>
                         <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accentBright : colors.subtle }]} />
