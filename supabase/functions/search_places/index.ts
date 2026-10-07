@@ -1,5 +1,5 @@
 import { anonClient, corsHeaders, fail, json, serviceClient } from "../_shared/lib.ts";
-import { cleanText, parseBias, parsePhoton, photonUrl } from "./photon.ts";
+import { rpcFailure, searchPlaces } from "./handler.ts";
 
 const PHOTON_URL = Deno.env.get("PHOTON_URL") ?? "https://photon.komoot.io";
 
@@ -17,25 +17,15 @@ Deno.serve(async (req) => {
     p_max: 600,
     p_window_seconds: 3600,
   });
-  if (limit.error) return fail("rate_limited", 429);
+  const denied = rpcFailure(limit.error);
+  if (denied) return json(denied.body, denied.status);
 
-  let body: Record<string, unknown>;
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
     return fail("invalid_request");
   }
-  const text = cleanText(body.text);
-  if (!text) return fail("invalid_query");
-
-  try {
-    const res = await fetch(photonUrl(PHOTON_URL, text, parseBias(body.bias)), {
-      headers: { "User-Agent": "Rendezview-place-search", Accept: "application/json" },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) return fail("search_unavailable", 502);
-    return json({ results: parsePhoton(await res.json()) });
-  } catch {
-    return fail("search_unavailable", 502);
-  }
+  const outcome = await searchPlaces(body, PHOTON_URL);
+  return json(outcome.body, outcome.status);
 });

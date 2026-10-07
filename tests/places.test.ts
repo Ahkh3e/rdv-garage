@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { admin, call, callOk, createCrew, createUser, sql, type TestUser } from "./helpers";
+import { admin, call, callOk, createCrew, createUser, invokeAs, sql, type TestUser } from "./helpers";
 
 interface PinRow {
   id: string;
@@ -176,9 +176,19 @@ describe("removing pins", () => {
 });
 
 describe("hardening", () => {
-  it("keeps the sweep and policy helper away from signed-in callers", async () => {
+  it("keeps the sweep away from signed-in callers", async () => {
     const { member } = await setup();
     expect((await call(member.client, "places", "sweep_expired")).error).not.toBeNull();
+  });
+
+  it("removes a deleted account's pins at once", async () => {
+    const { member, owner, crew } = await setup();
+    const mine = await dropOk(member, [crew.id]);
+    const theirs = await dropOk(owner, [crew.id]);
+    expect((await invokeAs(member.client, "delete-account")).body.ok).toBe(true);
+    expect(await sql("select 1 from places.pins where id = $1", [mine])).toEqual([]);
+    expect(await sql("select 1 from places.pin_crews where pin_id = $1", [mine])).toEqual([]);
+    expect(await sql("select 1 from places.pins where id = $1", [theirs])).toHaveLength(1);
   });
 
   it("sweeps long-expired pins", async () => {

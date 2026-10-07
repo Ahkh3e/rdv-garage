@@ -17,6 +17,19 @@ export const places: Module = {
     const controller = createPlacesController(shell);
     setController(shell, controller);
     void recents.load();
+    let lastUser: string | null = null;
+    const followSession = () => {
+      const session = shell.session.get();
+      if (session.status === "signedOut") {
+        lastUser = null;
+        recents.clear();
+      } else if (session.status === "signedIn") {
+        if (lastUser && lastUser !== session.userId) recents.clear();
+        lastUser = session.userId;
+      }
+    };
+    followSession();
+    shell.session.subscribe(followSession);
     shell.setGeocoder(createGeocoder((body) => shell.backend.invoke("search_places", body)));
     shell.setPlaceUi({ openCard: controller.openPlace, pick: controller.pickPlace });
     shell.pins.register({ id: "places", pins: controller.pins });

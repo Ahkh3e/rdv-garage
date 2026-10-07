@@ -35,6 +35,7 @@ export interface DropInput {
 export function createPlacesController(shell: ControllerShell, now: () => number = Date.now) {
   const state = createStore<PlacesState>({ pins: [], selection: null, nearby: null, draft: null });
   const mapPins = createStore<MapPin[]>([]);
+  let seq = 0;
   let picking: ((place: Place | null) => void) | null = null;
 
   const userId = () => {
@@ -66,10 +67,12 @@ export function createPlacesController(shell: ControllerShell, now: () => number
     selectedPin,
 
     async refreshPins() {
+      const mine = ++seq;
       const crewIds = shell.crewContext.store.get().selected;
       if (crewIds.length === 0 || !userId()) return state.set((s) => (s.pins.length ? { ...s, pins: [] } : s));
       try {
         const rows = await shell.backend.rpc<PinRow[]>("places", "list_pins", { p_crew_ids: crewIds });
+        if (mine !== seq) return;
         state.set((s) => ({ ...s, pins: unexpired(rows.map(pinFromRow), now()) }));
       } catch {
         // Keep what is on the map; the next refresh tries again.
@@ -94,6 +97,7 @@ export function createPlacesController(shell: ControllerShell, now: () => number
     },
 
     reset() {
+      seq++;
       state.set({ pins: [], selection: null, nearby: null, draft: null });
     },
 
@@ -158,6 +162,7 @@ export function createPlacesController(shell: ControllerShell, now: () => number
 
     async removePin(pinId: string) {
       await shell.backend.rpc("places", "remove_pin", { p_pin: pinId });
+      seq++;
       state.set((s) => ({ ...s, pins: s.pins.filter((pin) => pin.id !== pinId), selection: s.selection?.kind === "pin" && s.selection.pinId === pinId ? null : s.selection }));
     },
 
