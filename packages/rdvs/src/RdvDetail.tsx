@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { Banner, Button, Card, Empty, Screen, Text, colors, useAction, useCrewState, useDistanceLabel, useLiveState, useSession, useShell } from "@rdv/core";
-import { EDIT_ROUTE, type Person } from "./controller";
+import { EDIT_ROUTE, REFRESH_MS, type Person } from "./controller";
 import { useController } from "./context";
 import { formatWhen } from "./format";
 import { ANSWER_LABELS, KIND_LABELS, canAnswer, canCancel, canEdit, canMarkHere, hasEnded, isHappening, type Answer } from "./model";
@@ -24,14 +24,18 @@ export function RdvDetail({ navigation, route }: { navigation: any; route: { par
   const [notice, setNotice] = useState<string | null>(null);
 
   const answers = rdv ? `${rdv.going}-${rdv.maybe}-${rdv.cant}-${rdv.arrived}` : "";
+  const rdvId = rdv?.id;
   useEffect(() => {
-    if (!rdv) return;
+    if (!rdvId) return;
     let active = true;
-    controller.people(rdv.id).then((rows) => active && setPeople(rows)).catch(() => undefined);
+    const load = () => controller.people(rdvId).then((rows) => active && setPeople(rows)).catch(() => undefined);
+    void load();
+    const timer = setInterval(() => void load(), REFRESH_MS);
     return () => {
       active = false;
+      clearInterval(timer);
     };
-  }, [controller, rdv?.id, answers]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [controller, rdvId, answers]);
 
   const answer = useAction(async (value: Answer) => {
     await controller.setRsvp(rdv!.id, value);

@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Banner, Button, Disclaimer, DISCLAIMER_PLACES, Input, Screen, Text, colors, crewStyle, messageFor, radii, useAction, useCrewState, useShell, type Place } from "@rdv/core";
+import { Banner, Button, Disclaimer, DISCLAIMER_PLACES, Empty, Input, Screen, Spinner, Text, colors, crewStyle, messageFor, radii, useAction, useCrewState, useShell, useStore, type Place } from "@rdv/core";
 import { AppError } from "@rdv/core/errors";
 import { useController } from "./context";
 import { DETAIL_ROUTE } from "./controller";
 import { RADIUS_STEP, dayOptions, draftError, draftFromRdv, emptyDraft, endOf, startOfDay, stepDuration, stepRadius, withDay, withTimeShift, STEP_MIN, type Draft } from "./draft";
 import { formatDay, formatDuration, formatTime } from "./format";
-import { DEFAULT_DURATION_MS, KIND_LABELS, NOTE_MAX, TITLE_MAX, type RdvKind } from "./model";
+import { DEFAULT_DURATION_MS, KIND_LABELS, NOTE_MAX, TITLE_MAX, type Rdv, type RdvKind } from "./model";
 import { PickChip } from "./ui";
 
 const KINDS: RdvKind[] = ["meet", "cruise", "private_event"];
@@ -28,11 +28,31 @@ function Stepper({ label, value, onMinus, onPlus, testID }: { label: string; val
   );
 }
 
-export function RdvForm({ navigation, route }: { navigation: any; route: { params?: { place?: Place; id?: string } } }) {
+type FormRoute = { params?: { place?: Place; id?: string } };
+
+export function RdvForm({ navigation, route }: { navigation: any; route: FormRoute }) {
+  const controller = useController();
+  const { rdvs, loaded } = useStore(controller.state);
+  const id = route.params?.id;
+  const editing = id ? rdvs.find((r) => r.id === id) ?? null : null;
+  if (id && !editing) {
+    return (
+      <Screen>
+        {loaded ? (
+          <Empty title="This RDV is gone" body="It was cancelled and its time has passed, or you are no longer in its crew." action={<Button title="Back" variant="secondary" onPress={() => navigation.goBack()} />} />
+        ) : (
+          <Spinner />
+        )}
+      </Screen>
+    );
+  }
+  return <RdvFormBody key={id ?? "new"} navigation={navigation} route={route} editing={editing} />;
+}
+
+function RdvFormBody({ navigation, route, editing }: { navigation: any; route: FormRoute; editing: Rdv | null }) {
   const shell = useShell();
   const controller = useController();
   const crewState = useCrewState();
-  const editing = route.params?.id ? controller.find(route.params.id) : null;
   const now = useMemo(() => Date.now(), []);
   const [draft, setDraft] = useState<Draft>(() => {
     if (editing) return draftFromRdv(editing);

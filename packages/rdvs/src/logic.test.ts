@@ -3,7 +3,7 @@ import { dayOptions, defaultStart, draftError, draftFromRdv, emptyDraft, endOf, 
 import { formatDay, formatDuration, formatTime, formatWhen } from "./format";
 import {
   areaName, attendanceWindow, canAnswer, canCancel, canEdit, canMarkHere, diffReminders, effectiveEnd, inAttendanceWindow, insideRadius, isHappening,
-  pinColorKey, reminderFor, remindersFor, shouldReportArrival, showsPin, splitPlans, toMapPin, upcomingFor, type Rdv,
+  pinColorKey, rowColorKey, reminderFor, remindersFor, shouldReportArrival, showsPin, splitPlans, toMapPin, upcomingFor, type Rdv,
 } from "./model";
 
 const H = 3600000;
@@ -154,6 +154,13 @@ describe("map pins", () => {
   it("takes the tint of the first shared selected crew", () => {
     expect(pinColorKey(rdv({ crewIds: ["c3", "c2"] }), crews, ["c2", "c3"])).toBe(2);
     expect(pinColorKey(rdv({ crewIds: ["c3", "c2"] }), crews, ["c3"])).toBe(4);
+  });
+
+  it("colours a list row like its pin, not by the first crew listed", () => {
+    const multi = rdv({ crewIds: ["c3", "c2"] });
+    expect(rowColorKey(multi, crews, ["c2", "c3"])).toBe(pinColorKey(multi, crews, ["c2", "c3"]));
+    expect(rowColorKey(multi, crews, ["c3"])).toBe(4);
+    expect(rowColorKey(multi, crews, [])).toBe(2);
   });
 
   it("builds an rdv pin with the Live badge while happening", () => {

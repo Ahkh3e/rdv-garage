@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { Text, colors, crewStyle, radii, useCrewState, useStore } from "@rdv/core";
 import { useController } from "./context";
 import { formatWhen } from "./format";
-import { KIND_LABELS, isHappening, type Rdv } from "./model";
+import { KIND_LABELS, isHappening, rowColorKey, type Rdv } from "./model";
 
 export function useNow(intervalMs = 30000): number {
   const [now, setNow] = useState(Date.now());
@@ -44,12 +44,11 @@ export function PickChip({ label, selected, onPress, tint, testID }: { label: st
 }
 
 export function RdvRow({ rdv, now, onPress, right }: { rdv: Rdv; now: number; onPress: () => void; right?: ReactNode }) {
-  const crews = useCrewState().crews;
-  const crew = crews.find((c) => rdv.crewIds.includes(c.id));
+  const { crews, selected } = useCrewState();
   const where = rdv.place ? rdv.place.name : rdv.areaName;
   return (
     <Pressable testID={`rdv-row-${rdv.id}`} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.press }]}>
-      <View style={[styles.bar, { backgroundColor: crewStyle(crew?.styleIndex ?? 0).tint }]} />
+      <View style={[styles.bar, { backgroundColor: crewStyle(rowColorKey(rdv, crews, selected)).tint }]} />
       <View style={{ flex: 1, gap: 2 }}>
         <View style={styles.titleLine}>
           <Text variant="headline" numberOfLines={1} style={{ flexShrink: 1 }}>{rdv.title}</Text>

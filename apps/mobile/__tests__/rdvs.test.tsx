@@ -149,6 +149,27 @@ describe("RDV detail", () => {
     expect(screen.queryByText(/away/)).toBeNull();
   });
 
+  it("refetches who is going every 30 seconds while the detail is open, and shows new arrivals", async () => {
+    let arrived = false;
+    const b = backend(() => [rdvRow()], { "rdvs.list_rsvps": () => people.map((p) => (p.handle === "bolt" ? { ...p, arrived } : p)) });
+    const { shell } = await mount(b);
+    jest.useFakeTimers({ doNotFake: ["setImmediate", "nextTick"] });
+    try {
+      shell.pins.press("rdvs:r1");
+      expect(await screen.findByText("@bolt")).toBeTruthy();
+      const calls = () => b.calls.filter((c) => c.name === "rdvs.list_rsvps").length;
+      const before = calls();
+      arrived = true;
+      await act(async () => {
+        jest.advanceTimersByTime(30000);
+      });
+      expect(calls()).toBeGreaterThan(before);
+      expect(await screen.findByText("@bolt (here)")).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("sends the answer", async () => {
     const b = backend(() => [rdvRow()]);
     const { shell } = await mount(b);
@@ -323,6 +344,16 @@ describe("create", () => {
     await fireEvent.press(screen.getByTestId("rdv-save"));
     await waitFor(() => expect(b.calls.find((c) => c.name === "rdvs.create_rdv")).toBeTruthy());
     expect(b.calls.find((c) => c.name === "rdvs.create_rdv")!.args).toMatchObject({ p_kind: "private_event", p_area_name: "Leslieville" });
+  });
+
+  it("never shows the New RDV form for an edit of an RDV that is not loaded", async () => {
+    const b = backend(() => [rdvRow()]);
+    const { shell } = await mount(b);
+    await act(async () => shell.navigate("RdvEdit", { id: "missing" }));
+    expect(await screen.findByText("This RDV is gone")).toBeTruthy();
+    expect(screen.queryByTestId("rdv-save")).toBeNull();
+    expect(screen.queryByText("New RDV")).toBeNull();
+    expect(b.calls.some((c) => c.name === "rdvs.create_rdv")).toBe(false);
   });
 
   it("chooses the place through the place picker when none was carried over", async () => {

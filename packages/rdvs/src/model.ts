@@ -138,6 +138,12 @@ export function pinColorKey(rdv: Pick<Rdv, "crewIds">, crews: Pick<CrewSummary, 
   return shared.length ? Math.min(...shared.map((c) => c.styleIndex)) : 0;
 }
 
+// A list row uses the pin's colour. With none of its crews selected it takes the lowest style among its own crews.
+export function rowColorKey(rdv: Pick<Rdv, "crewIds">, crews: Pick<CrewSummary, "id" | "styleIndex">[], selected: string[]): number {
+  if (crews.some((c) => selected.includes(c.id) && rdv.crewIds.includes(c.id))) return pinColorKey(rdv, crews, selected);
+  return pinColorKey(rdv, crews, rdv.crewIds);
+}
+
 export function toMapPin(rdv: Rdv, crews: Pick<CrewSummary, "id" | "styleIndex">[], selected: string[], now: number, onPress: () => void): MapPin | null {
   if (!showsPin(rdv, selected, now)) return null;
   return {
