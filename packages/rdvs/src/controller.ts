@@ -39,7 +39,7 @@ export const DETAIL_ROUTE = "RdvDetail";
 export const EDIT_ROUTE = "RdvEdit";
 export const PLANS_ROUTE = "Plans";
 const RETRY_AFTER_ERROR_MS = 60000;
-const FINAL_CODES = new Set(["outside_radius", "outside_window", "rdv_closed", "rdv_not_found"]);
+const FINAL_CODES = new Set(["rdv_closed", "rdv_not_found"]);
 
 export function createRdvsController(
   shell: ControllerShell,
@@ -99,7 +99,9 @@ export function createRdvsController(
     pins: mapPins as Store<MapPin[]>,
 
     async refresh() {
-      const crewIds = shell.crewContext.store.get().crews.map((c) => c.id);
+      const { crews, loaded } = shell.crewContext.store.get();
+      const crewIds = crews.map((c) => c.id);
+      if (userId() && crewIds.length === 0 && !loaded) return;
       if (!userId() || crewIds.length === 0) {
         state.set((s) => (s.rdvs.length || !s.loaded ? { rdvs: [], loaded: true } : s));
         return syncReminders();

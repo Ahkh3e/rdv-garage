@@ -181,6 +181,17 @@ describe("who can see an RDV", () => {
     expect(rsvps.data).toEqual([{ user_id: other.id }]);
   });
 
+  it("shows a reader only the crew links of their own crews", async () => {
+    const { member, owner, crew } = await setup();
+    const second = await createCrew(await createUser());
+    await callOk(member.client, "crews", "join_crew", { p_link_code: second.link_code });
+    const id = await createOk(member, [crew.id, second.id]);
+    const links = async (u: TestUser) => ((await u.client.schema("rdvs").from("crews").select("crew_id").eq("rdv_id", id)).data ?? []).map((r) => r.crew_id).sort();
+    expect(await links(owner)).toEqual([crew.id]);
+    expect(await links(member)).toEqual([crew.id, second.id].sort());
+    expect(((await find(owner, [crew.id], id))!.crew_ids)).toEqual([crew.id]);
+  });
+
   it("keeps arrivals away from people outside the crews", async () => {
     const { member, stranger, crew } = await setup();
     const id = await createOk(member, [crew.id]);
@@ -267,6 +278,26 @@ describe("editing and cancelling", () => {
     expect(edit.error).toBeNull();
     expect(await sql("select 1 from rdvs.arrivals where rdv_id = $1 and user_id = $2", [id, owner.id])).toHaveLength(1);
     expect(await find(member, [crew.id], id)).toMatchObject({ going: 1 });
+  });
+
+  it("keeps a crew the host has left when the host edits the RDV", async () => {
+    const { member, owner, crew } = await setup();
+    const second = await createCrew(owner);
+    const rival = await createUser();
+    await callOk(member.client, "crews", "join_crew", { p_link_code: second.link_code });
+    await callOk(rival.client, "crews", "join_crew", { p_link_code: second.link_code });
+    const id = await createOk(member, [crew.id, second.id]);
+    await rsvp(rival, id, "going");
+    await callOk(member.client, "crews", "leave_crew", { p_crew: second.id });
+    const edit = await call(member.client, "rdvs", "update_rdv", {
+      p_rdv: id, p_title: "Renamed meet", p_kind: "meet", p_place_name: "Harbour lot", p_lat: PLACE.lat, p_lng: PLACE.lng, p_area_name: "Waterfront",
+      p_starts_at: hoursFromNow(5), p_ends_at: null, p_note: null, p_crew_ids: [crew.id], p_radius_m: 150,
+    });
+    expect(edit.error).toBeNull();
+    const links = await sql<{ crew_id: string }>("select crew_id from rdvs.crews where rdv_id = $1", [id]);
+    expect(links.map((l) => l.crew_id).sort()).toEqual([crew.id, second.id].sort());
+    expect(await find(rival, [second.id], id)).toMatchObject({ title: "Renamed meet", going: 1, my_answer: "going" });
+    expect(await find(owner, [second.id], id)).toMatchObject({ going: 1 });
   });
 
   it("lets the host or a crew owner cancel, and nobody else", async () => {
@@ -519,6 +550,16 @@ describe("account deletion", () => {
     const seen = await find(other, [crew.id], hosted);
     expect(seen).toMatchObject({ status: "cancelled", host_id: null, host_handle: null, arrived: true, going: 1 });
     expect((await find(owner, [crew.id], mine))!.going).toBe(0);
+  });
+
+  it("also removes the person's pins when they host RDVs", async () => {
+    const { member, crew } = await setup();
+    const rdv = await createOk(member, [crew.id]);
+    const { data: pin } = await call<string>(member.client, "places", "drop_pin", { p_label: "Meet spot", p_note: null, p_lat: 43.65, p_lng: -79.38, p_address: null, p_crew_ids: [crew.id] });
+    expect(pin).toBeTruthy();
+    await invokeAs(member.client, "delete-account");
+    expect(await sql("select 1 from places.pins where id = $1", [pin])).toEqual([]);
+    expect(await sql("select status, host_id from rdvs.rdvs where id = $1", [rdv])).toEqual([{ status: "cancelled", host_id: null }]);
   });
 
   it("keeps an ended RDV and the arrivals at it after the host is deleted", async () => {

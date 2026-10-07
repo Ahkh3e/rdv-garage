@@ -47,7 +47,7 @@ function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: 
     handoff: { openDirections },
   };
   const controller = createRdvsController(shell, { reminders, readPosition, now: () => now });
-  return { controller, rpc, invoke, crewStore, positions, navigate, openDirections, scheduled, readPosition, setNow: (n: number) => (now = n) };
+  return { shell, controller, rpc, invoke, crewStore, positions, navigate, openDirections, scheduled, readPosition, setNow: (n: number) => (now = n) };
 }
 
 const here = (over: Partial<MemberPosition> = {}): Record<string, MemberPosition> => ({
@@ -160,16 +160,32 @@ describe("arrival", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it("does not try again after the server says the reading is outside the radius, and retries after a network error", async () => {
-    const refused = setup([row()], { invoke: () => { throw new AppError("outside_radius"); } });
-    await refused.controller.refresh();
-    refused.positions.set(here());
-    await tick();
-    refused.setNow(NOW + 5 * 60000);
-    refused.positions.set(here({ ts: NOW + 5 * 60000 }));
-    await tick();
-    expect(refused.invoke).toHaveBeenCalledTimes(1);
+  it("retries after the server says the reading is outside the radius or window, but not when the RDV is closed", async () => {
+    for (const code of ["outside_radius", "outside_window"]) {
+      const refused = setup([row()], { invoke: () => { throw new AppError(code); } });
+      await refused.controller.refresh();
+      refused.positions.set(here());
+      await tick();
+      refused.positions.set(here({ ts: NOW + 1000 }));
+      await tick();
+      expect(refused.invoke).toHaveBeenCalledTimes(1);
+      refused.setNow(NOW + 61000);
+      refused.positions.set(here({ ts: NOW + 61000 }));
+      await tick();
+      expect(refused.invoke).toHaveBeenCalledTimes(2);
+    }
 
+    const closed = setup([row()], { invoke: () => { throw new AppError("rdv_closed"); } });
+    await closed.controller.refresh();
+    closed.positions.set(here());
+    await tick();
+    closed.setNow(NOW + 5 * 60000);
+    closed.positions.set(here({ ts: NOW + 5 * 60000 }));
+    await tick();
+    expect(closed.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries after a network error at the retry interval", async () => {
     const flaky = setup([row()], { invoke: () => { throw new AppError("network"); } });
     await flaky.controller.refresh();
     flaky.positions.set(here());
@@ -216,6 +232,35 @@ describe("reminders", () => {
     await controller.refresh();
     await tick();
     expect([...scheduled.keys()]).toEqual([]);
+  });
+
+  it("keeps reminders while crews have not loaded, and clears them once crews load empty or the person signs out", async () => {
+    const { controller, scheduled, crewStore } = setup([row({ id: "a", my_answer: "going", starts_at: iso(NOW + 5 * H), end_at: iso(NOW + 8 * H) })]);
+    await controller.refresh();
+    await tick();
+    expect([...scheduled.keys()]).toEqual(["rdv-a"]);
+
+    crewStore.set({ loaded: false, crews: [], selected: [] });
+    await controller.refresh();
+    await tick();
+    expect([...scheduled.keys()]).toEqual(["rdv-a"]);
+    expect(controller.state.get().rdvs).toHaveLength(1);
+
+    crewStore.set({ loaded: true, crews: [], selected: [] });
+    await controller.refresh();
+    await tick();
+    expect(scheduled.size).toBe(0);
+  });
+
+  it("clears reminders when nobody is signed in", async () => {
+    const { controller, scheduled, shell } = setup([row({ id: "a", my_answer: "going", starts_at: iso(NOW + 5 * H), end_at: iso(NOW + 8 * H) })]);
+    await controller.refresh();
+    await tick();
+    expect(scheduled.size).toBe(1);
+    shell.session.set({ status: "signedOut" });
+    await controller.refresh();
+    await tick();
+    expect(scheduled.size).toBe(0);
   });
 
   it("reschedules when the start changes and clears everything on reset", async () => {
