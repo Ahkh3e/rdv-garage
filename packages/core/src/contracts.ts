@@ -130,6 +130,8 @@ export interface MapPin {
   kind: string;
   // Index into the crew tints (crewStyle); use the owning crew's styleIndex.
   colorKey: number;
+  // Shows a Live badge on the pin while the thing it marks is happening.
+  live?: boolean;
   // Runs when the pin is tapped. The owning module opens its detail, normally with shell.navigate.
   onPress(): void;
 }

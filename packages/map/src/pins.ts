@@ -5,6 +5,6 @@ export function pinFeatures(pins: MapPin[]): GeoJSON.Feature<GeoJSON.Point>[] {
     type: "Feature",
     id: pin.id,
     geometry: { type: "Point", coordinates: [pin.lng, pin.lat] },
-    properties: { id: pin.id, label: pin.label, kind: pin.kind, color: crewStyle(pin.colorKey).tint },
+    properties: { id: pin.id, label: pin.label, kind: pin.kind, color: crewStyle(pin.colorKey).tint, live: pin.live === true },
   }));
 }
