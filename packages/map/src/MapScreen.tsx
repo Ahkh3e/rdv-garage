@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
-import { Avatar, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
+import { Avatar, Button, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
 import { holdHeading } from "./heading";
 import { RoadIndex, linesFromFeatures } from "./roadSnap";
@@ -35,6 +35,7 @@ interface Me {
 
 export function MapScreen() {
   const focused = useIsFocused();
+  const navigation = useNavigation<any>();
   const session = useSession();
   const crewState = useCrewState();
   const positions = usePositions();
@@ -455,7 +456,16 @@ export function MapScreen() {
           onScroll={onListScroll}
           onScrollEndDrag={onListRelease}
         >
-          {members.length === 0 && crewState.loaded ? (
+          {crewState.loaded && crewState.crews.length === 0 ? (
+            <View style={styles.firstCrew}>
+              <Text variant="title">Start with a crew</Text>
+              <Text muted>Crews are private. Create one, or join with a link a friend shared, and its members show up here.</Text>
+              <View style={{ gap: 8, marginTop: 8 }}>
+                <Button title="Create a crew" testID="map-create-crew" onPress={() => navigation.navigate("CreateCrew")} />
+                <Button title="Join with a link" testID="map-join-crew" variant="ghost" onPress={() => navigation.navigate("JoinCrew")} />
+              </View>
+            </View>
+          ) : members.length === 0 && crewState.loaded ? (
             <Text variant="body" muted>{crewState.selected.length === 0 ? "Switch on a crew in Crews to see its members." : "Your crews have no other members yet."}</Text>
           ) : null}
           {members.map((m, i) => {
@@ -523,6 +533,7 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 8, paddingBottom: 96 },
   member: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 12, borderRadius: radii.sm },
   memberDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
+  firstCrew: { gap: 6, paddingHorizontal: 12, paddingTop: 8 },
   status: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 64, justifyContent: "flex-end" },
   speed: { flexDirection: "row", alignItems: "baseline", gap: 4 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
