@@ -7,6 +7,7 @@ import { useController } from "./context";
 import { DropPinSheet } from "./DropPinSheet";
 import { NearbyPanel } from "./NearbyPanel";
 import { SearchField, SearchResults, useSearch } from "./SearchResults";
+import { queryReady } from "./validation";
 
 export function PlacesOverlay() {
   const shell = useShell();
@@ -23,6 +24,13 @@ export function PlacesOverlay() {
     return () => clearInterval(timer);
   }, []);
 
+  // Blur fires before a press on a Recent row lands, so the check waits a beat and reads the query then.
+  const closeIfIdle = () => {
+    setTimeout(() => {
+      if (!queryReady(search.state.get().query)) setPanel((p) => (p === "search" ? null : p));
+    }, 250);
+  };
+
   const choose = (place: Place) => {
     Keyboard.dismiss();
     setPanel(null);
@@ -36,7 +44,7 @@ export function PlacesOverlay() {
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <View style={styles.top} pointerEvents="box-none">
         <Glass kind="control" style={styles.search}>
-          <SearchField search={search} onFocus={() => setPanel("search")} onClear={() => setPanel(null)} />
+          <SearchField search={search} onFocus={() => setPanel("search")} onBlur={closeIfIdle} onClear={() => setPanel(null)} />
         </Glass>
         <GlassButton testID="places-nearby" label="Nearby" onPress={() => { Keyboard.dismiss(); setPanel((p) => (p === "nearby" ? null : "nearby")); }}>
           <Feather name="compass" size={19} color={panel === "nearby" ? colors.accentBright : colors.text} />

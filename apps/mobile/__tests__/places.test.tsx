@@ -126,6 +126,31 @@ describe("place search", () => {
     await waitFor(() => expect(JSON.parse(recentsOnDisk()!)).toEqual([]));
   });
 
+  it("closes the search panel when the field loses focus with nothing usable typed", async () => {
+    mockFiles.clear();
+    await mount();
+    await fireEvent(inputs().at(-1)!, "focus");
+    await type("t");
+    expect(await screen.findByText("Type at least 3 characters.")).toBeTruthy();
+    await fireEvent(inputs().at(-1)!, "blur");
+    await waitFor(() => expect(screen.queryByText("Type at least 3 characters.")).toBeNull());
+  });
+
+  it("keeps a Recent row tappable across the blur that comes before the press", async () => {
+    mockFiles.clear();
+    await mount();
+    await type("night meet");
+    await fireEvent(inputs().at(-1)!, "focus");
+    await fireEvent.press(await screen.findByTestId("places-result-0"));
+    await waitFor(() => expect(JSON.parse(recentsOnDisk() ?? "[]")).toContain("night meet"));
+    await fireEvent(inputs().at(-1)!, "focus");
+    await fireEvent(inputs().at(-1)!, "blur");
+    await fireEvent.press(await screen.findByTestId("places-recent-night meet"));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(inputs().at(-1)!.props.value).toBe("night meet");
+    expect(await screen.findByTestId("places-result-0")).toBeTruthy();
+  });
+
   it("offers Make an RDV only when an RDV create route is registered", async () => {
     await mount(backend(), true);
     await type("tim hortons");
