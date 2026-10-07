@@ -64,7 +64,7 @@ export class RoadIndex {
 
   // Nearest road within maxM metres. With a direction of travel, roads running another way are less likely, so a
   // parallel street or a crossing road does not steal the point.
-  snap(p: LngLat, heading: number | null = null, maxM = 25): Snap | null {
+  snap(p: LngLat, heading: number | null = null, maxM = 25, preferLine: number | null = null): Snap | null {
     const cx = Math.floor(p.lng / CELL_LNG);
     const cy = Math.floor(p.lat / CELL_LAT);
     const kx = Math.cos((p.lat * Math.PI) / 180) * M_LAT;
@@ -98,6 +98,8 @@ export class RoadIndex {
             const diff = Math.abs(road - (heading % 180));
             if (Math.min(diff, 180 - diff) > 60) cost += 18;
           }
+          // Staying on the road you were on avoids hopping between parallel streets or at crossings.
+          if (preferLine !== null && id === preferLine) cost -= 10;
           if (cost < bestCost) {
             bestCost = cost;
             best = { lng: p.lng + px / kx, lat: p.lat + py / M_LAT, line: id, seg: s, t, dist };

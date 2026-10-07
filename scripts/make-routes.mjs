@@ -12,15 +12,49 @@ const loops = {
   loopB: [[43.65, -79.387], [43.65, -79.396], [43.656, -79.396], [43.656, -79.387]],
 };
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const osrm = async (coords, extra = "") => {
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords.map(([lat, lng]) => `${lng},${lat}`).join(";")}?overview=full&geometries=geojson&continue_straight=true${extra}`;
+  const json = await (await fetch(url)).json();
+  if (json.code !== "Ok") throw new Error(json.code);
+  await sleep(1200);
+  return json;
+};
+
+// Waypoints that are not on a road make the router add a spur out to the road and back. Snap them first, then route
+// through the snapped points, then trim any remaining out-and-back so a car only ever drives forward.
+const bearing = (a, b) => (Math.atan2((b.lng - a.lng) * Math.cos((a.lat * Math.PI) / 180), b.lat - a.lat) * 180) / Math.PI;
+const reverses = (a, b, c) => {
+  const d = Math.abs(((bearing(a, b) - bearing(b, c) + 540) % 360) - 180);
+  return d > 150;
+};
+function trimSpurs(pts) {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 1; i < pts.length - 1; i++) {
+      if (reverses(pts[i - 1], pts[i], pts[i + 1])) {
+        // Drop the tip of the spur and the point after it that doubles back.
+        pts.splice(i, 2);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return pts;
+}
+
 const out = {};
 for (const [name, points] of Object.entries(loops)) {
-  const coords = [...points, points[0]].map(([lat, lng]) => `${lng},${lat}`).join(";");
-  const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&continue_straight=true`);
-  const json = await res.json();
-  if (json.code !== "Ok") throw new Error(`${name}: ${json.code}`);
-  out[name] = json.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5 }));
-  console.log(name, out[name].length, "points", Math.round(json.routes[0].distance), "m");
-  await new Promise((r) => setTimeout(r, 1200));
+  const closed = [...points, points[0]];
+  const first = await osrm(closed);
+  const snapped = first.waypoints.map((w) => [w.location[1], w.location[0]]);
+  const second = await osrm(snapped);
+  const raw = second.routes[0].geometry.coordinates.map(([lng, lat]) => ({ lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5 }));
+  // Remove duplicate neighbours, then spurs.
+  const dedup = raw.filter((p, i) => i === 0 || p.lat !== raw[i - 1].lat || p.lng !== raw[i - 1].lng);
+  out[name] = trimSpurs(dedup);
+  console.log(name, raw.length, "->", out[name].length, "points", Math.round(second.routes[0].distance), "m");
 }
 
 const body = Object.entries(out)

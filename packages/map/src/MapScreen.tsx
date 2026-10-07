@@ -6,8 +6,8 @@ import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
 import { Avatar, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
-import { GlidingAnnotation } from "./GlidingAnnotation";
-import { MemberMarker, SelfMarker } from "./MemberMarker";
+import { CarLayer, type CarInput } from "./CarLayer";
+import { holdHeading } from "./heading";
 import { RoadIndex, linesFromFeatures } from "./roadSnap";
 import { appendTrail, snapTrail, trailFeatures, type TrailPoint, type TrailSet } from "./trails";
 import { FLAT_PITCH, FOLLOW_CAMERA, rdvNightStyle, rdvNightStyleFlat } from "./style";
@@ -43,7 +43,7 @@ export function MapScreen() {
   const zoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const followZoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const [follow, setFollow] = useState(true);
-  const [bearing, setBearing] = useState(0);
+  const [mapZoom, setMapZoom] = useState(11.5);
   const headings = useRef<Record<string, number>>({});
   const [view3d, setView3d] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
@@ -119,8 +119,19 @@ export function MapScreen() {
     };
   }, [focused]);
 
-  const easeToMe = useCallback((at: Me, duration = 700) => {
-    if (at.heading !== null) lastHeading.current = at.heading;
+  const lastEase = useRef(0);
+  const easeSpan = useRef(0);
+  const easeToMe = useCallback((at: Me, duration?: number) => {
+    // Ease for as long as the last fix took to arrive, so each move ends as the next begins instead of pausing in between.
+    const now = Date.now();
+    const raw = Math.min(1200, Math.max(250, now - lastEase.current));
+    // Only follow-camera eases (no explicit duration) feed the smoothed span; a button press must not drag it around.
+    if (duration === undefined) easeSpan.current = easeSpan.current === 0 ? raw : easeSpan.current * 0.8 + raw * 0.2;
+    const span = duration ?? easeSpan.current;
+    lastEase.current = now;
+    duration = span;
+    if (at.heading !== null) lastHeading.current = holdHeading(headings.current.me, at.heading);
+    if (at.heading !== null) headings.current.me = lastHeading.current;
     camera.current?.easeTo({
       center: [at.lng, at.lat],
       zoom: followZoom.current,
@@ -152,13 +163,14 @@ export function MapScreen() {
   const myId = session.status === "signedIn" ? session.userId : null;
   const myIcon = session.status === "signedIn" ? session.profile.carIcon : "gt";
 
-  // A parked car keeps its last heading, and the car turns relative to the map so it points the way it is travelling.
-  const rotationFor = (id: string, heading: number | null | undefined) => {
-    if (heading !== null && heading !== undefined && heading >= 0) headings.current[id] = heading;
-    return (((headings.current[id] ?? 0) - bearing) % 360 + 360) % 360;
+  // The 3D cars sit in the map itself, so a heading is a compass heading. A parked car keeps its last heading.
+  const headingFor = (id: string, heading: number | null | undefined) => {
+    if (heading !== null && heading !== undefined && heading >= 0) headings.current[id] = holdHeading(headings.current[id], heading);
+    return headings.current[id] ?? 0;
   };
   const others = Object.values(positions).filter(
-    (p) => p.userId !== myId && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
+    // Only members who are live: someone who stopped sending updates is off the map, not shown dimmed or idle.
+    (p) => p.userId !== myId && now - p.ts <= FADE_AFTER_MS && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
 
   // The road lines the map has already loaded for what is on screen. Trails are matched to these on the phone only.
@@ -250,6 +262,14 @@ export function MapScreen() {
       .sort((a, b) => Number(!!b.position) - Number(!!a.position) || a.handle.localeCompare(b.handle));
   }, [lookup, others, myId]);
 
+  const cars: CarInput[] = [
+    ...others.map((p) => {
+      const info = lookup.get(p.userId)!;
+      return { id: p.userId, lng: p.lng, lat: p.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: crewStyle(info.styleIndex).tint, label: info.handle };
+    }),
+    ...(me ? [{ id: "me", lng: headPosition("me", me).lng, lat: headPosition("me", me).lat, heading: headingFor("me", me.heading), icon: myIcon, color: colors.accentBright, self: true }] : []),
+  ];
+
   const showEveryone = () => {
     if (others.length === 0) return;
     const points = others.map((p) => [p.lng, p.lat] as const);
@@ -330,7 +350,7 @@ export function MapScreen() {
           onDidFinishRenderingMapFully={() => refreshRoads()}
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
-            setBearing(event.nativeEvent.bearing ?? 0);
+            setMapZoom(Math.round(event.nativeEvent.zoom * 4) / 4);
             refreshRoads(event.nativeEvent.center as [number, number]);
             // Dragging or pinching the map by hand ends follow mode; the home button brings it back.
             if (event.nativeEvent.userInteraction) {
@@ -344,19 +364,7 @@ export function MapScreen() {
             <Layer type="line" id="trail-glow" style={{ lineColor: ["get", "color"], lineOpacity: ["*", ["get", "a"], 0.35], lineWidth: TRAIL_GLOW_WIDTH, lineBlur: 10, lineCap: "round", lineJoin: "round" }} />
             <Layer type="line" id="trail-line" style={{ lineColor: ["get", "color"], lineOpacity: ["get", "a"], lineWidth: TRAIL_WIDTH, lineCap: "round", lineJoin: "round" }} />
           </GeoJSONSource>
-          {me ? (
-            <GlidingAnnotation id="me" target={headPosition("me", me)} ms={450}>
-              <SelfMarker carIcon={myIcon} rotation={rotationFor("me", me.heading)} />
-            </GlidingAnnotation>
-          ) : null}
-          {others.map((p) => {
-            const info = lookup.get(p.userId)!;
-            return (
-              <GlidingAnnotation key={p.userId} id={p.userId} target={headPosition(p.userId, p)}>
-                <MemberMarker handle={info.handle} carIcon={info.carIcon} styleIndex={info.styleIndex} stale={now - p.ts > FADE_AFTER_MS} rotation={rotationFor(p.userId, p.heading)} />
-              </GlidingAnnotation>
-            );
-          })}
+          <CarLayer cars={cars} zoom={mapZoom} />
         </Map>
 
         <View style={styles.top} pointerEvents="box-none">
@@ -453,7 +461,6 @@ export function MapScreen() {
           {members.map((m, i) => {
             const tint = crewStyle(m.styleIndex).tint;
             const position = m.position;
-            const fresh = position ? now - position.ts <= FADE_AFTER_MS : false;
             return (
               <Pressable
                 key={m.id}
@@ -476,19 +483,15 @@ export function MapScreen() {
                 <CarIcon icon={m.carIcon} size={22} color={position ? colors.muted : colors.disabled} />
                 {position ? (
                   <View style={styles.status}>
-                    {fresh && position.speedKmh !== null && position.speedKmh !== undefined ? (
-                      position.speedKmh < 3 ? (
-                        <Text variant="caption" color={colors.muted}>Parked</Text>
-                      ) : (
-                        <View style={styles.speed}>
-                          <Text variant="numeral" style={{ fontSize: 18, lineHeight: 22 }}>{position.speedKmh}</Text>
-                          <Text variant="caption" color={colors.subtle}>km/h</Text>
-                        </View>
-                      )
+                    {position.speedKmh !== null && position.speedKmh !== undefined && position.speedKmh >= 3 ? (
+                      <View style={styles.speed}>
+                        <Text variant="numeral" style={{ fontSize: 18, lineHeight: 22 }}>{position.speedKmh}</Text>
+                        <Text variant="caption" color={colors.subtle}>km/h</Text>
+                      </View>
                     ) : (
                       <>
-                        <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accentBright : colors.subtle }]} />
-                        <Text variant="caption" color={fresh ? colors.text : colors.subtle}>{fresh ? "Live" : "Idle"}</Text>
+                        <View style={[styles.statusDot, { backgroundColor: colors.accentBright }]} />
+                        <Text variant="caption" color={colors.text}>Live</Text>
                       </>
                     )}
                   </View>
