@@ -34,6 +34,7 @@ const remember = (app: MapsApp) =>
 
 export const handoff = createHandoff({
   os,
+  ready: () => prefs.ready,
   getPreferred: () => prefs.store.get(),
   setPreferred: prefs.set,
   canOpen: (url) => Linking.canOpenURL(url),

@@ -77,6 +77,60 @@ describe("places controller", () => {
     expect(controller.state.get().selection).toBeNull();
   });
 
+  describe("refresh ordering", () => {
+    const pending = () => {
+      const waiting: ((rows: unknown[]) => void)[] = [];
+      const rpc = vi.fn((_s: string, name: string) =>
+        name === "list_pins" ? new Promise<unknown[]>((resolve) => waiting.push(resolve)) : Promise.resolve(undefined),
+      );
+      return { rpc, waiting };
+    };
+    const withPending = () => {
+      const base = setup();
+      const { rpc, waiting } = pending();
+      const shell = {
+        backend: { rpc } as never,
+        mapBridge: base.bridge,
+        crewContext: { store: base.crewStore } as never,
+        session: createStore<SessionState>({ status: "signedIn", userId: "u1", profile: { id: "u1", handle: "me", avatarPath: null, carIcon: "gt" } }),
+        navigate: vi.fn(),
+        handoff: { openDirections: vi.fn(async () => undefined) },
+        hasRoute: () => false,
+      } satisfies ControllerShell;
+      return { controller: createPlacesController(shell, () => Date.parse("2025-10-07T10:00:00Z")), waiting, crewStore: base.crewStore };
+    };
+
+    it("ignores a slow answer for a crew selection that has since changed", async () => {
+      const { controller, waiting, crewStore } = withPending();
+      const first = controller.refreshPins();
+      crewStore.set((s) => ({ ...s, selected: ["c2"] }));
+      const second = controller.refreshPins();
+      waiting[1]!([{ ...row, id: "new", crew_ids: ["c2"] }]);
+      await second;
+      waiting[0]!([row]);
+      await first;
+      expect(controller.state.get().pins.map((p) => p.id)).toEqual(["new"]);
+    });
+
+    it("does not bring back a pin removed while a refresh was in flight", async () => {
+      const { controller, waiting } = withPending();
+      const refresh = controller.refreshPins();
+      await controller.removePin("p1");
+      waiting[0]!([row]);
+      await refresh;
+      expect(controller.state.get().pins).toEqual([]);
+    });
+
+    it("drops an answer that arrives after a reset", async () => {
+      const { controller, waiting } = withPending();
+      const refresh = controller.refreshPins();
+      controller.reset();
+      waiting[0]!([row]);
+      await refresh;
+      expect(controller.state.get().pins).toEqual([]);
+    });
+  });
+
   it("lists nearby places from the tiles by distance and shows them on the map", async () => {
     const pois: Poi[] = [
       { name: "Far Gas", lat: 43.7, lng: -79.38, cls: "fuel", subclass: null },

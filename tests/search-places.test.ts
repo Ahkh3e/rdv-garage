@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ANON_KEY, API_URL, createUser, invokeAs, sql } from "./helpers";
+import { MAX_RESPONSE_BYTES, rpcFailure, searchPlaces } from "../supabase/functions/search_places/handler";
 import { cleanText, coarse, parseBias, parsePhoton, photonUrl } from "../supabase/functions/search_places/photon";
 
 describe("search_places request handling", () => {
@@ -71,5 +72,53 @@ describe("photon request and response", () => {
       { name: "5 King St", kind: "Address", address: "Toronto", lat: 43.7, lng: -79.4 },
     ]);
     expect(parsePhoton({})).toEqual([]);
+  });
+});
+
+describe("search handler", () => {
+  const feature = { geometry: { coordinates: [-79.38, 43.65] }, properties: { name: "CN Tower", osm_value: "tower" } };
+  const photon = (res: () => Response) => {
+    const urls: string[] = [];
+    const doFetch = (async (url: string) => (urls.push(url), res())) as unknown as typeof fetch;
+    return { urls, doFetch };
+  };
+
+  it("forwards only q, lat and lon with a coarsened bias", async () => {
+    const { urls, doFetch } = photon(() => new Response(JSON.stringify({ features: [feature] })));
+    const out = await searchPlaces({ text: " cn tower ", bias: { lat: 43.653226, lng: -79.383184 }, handle: "x", crew: "y" }, "http://photon.test", doFetch);
+    expect(out.status).toBe(200);
+    expect(out.body).toEqual({ results: [{ name: "CN Tower", kind: "Tower", address: null, lat: 43.65, lng: -79.38 }] });
+    const url = new URL(urls[0]!);
+    expect(url.searchParams.get("q")).toBe("cn tower");
+    expect(url.searchParams.get("lat")).toBe("43.65");
+    expect(url.searchParams.get("lon")).toBe("-79.38");
+    expect([...url.searchParams.keys()].sort()).toEqual(["lang", "lat", "limit", "lon", "q"]);
+  });
+
+  it("answers search_unavailable when the geocoder fails, is unreachable or sends junk", async () => {
+    const unavailable = { status: 502, body: { error: "search_unavailable" } };
+    expect(await searchPlaces({ text: "cn tower" }, "http://photon.test", photon(() => new Response("no", { status: 500 })).doFetch)).toEqual(unavailable);
+    expect(await searchPlaces({ text: "cn tower" }, "http://photon.test", (() => Promise.reject(new Error("down"))) as unknown as typeof fetch)).toEqual(unavailable);
+    expect(await searchPlaces({ text: "cn tower" }, "http://photon.test", photon(() => new Response("<html>")).doFetch)).toEqual(unavailable);
+  });
+
+  it("refuses an oversized geocoder response", async () => {
+    const big = JSON.stringify({ features: [], pad: "x".repeat(MAX_RESPONSE_BYTES) });
+    const out = await searchPlaces({ text: "cn tower" }, "http://photon.test", photon(() => new Response(big)).doFetch);
+    expect(out).toEqual({ status: 502, body: { error: "search_unavailable" } });
+    const declared = await searchPlaces({ text: "cn tower" }, "http://photon.test", photon(() => new Response("{}", { headers: { "content-length": String(MAX_RESPONSE_BYTES + 1) } })).doFetch);
+    expect(declared.status).toBe(502);
+  });
+
+  it("rejects bodies that are not a plain object", async () => {
+    for (const body of [null, "cn tower", 5, ["cn tower"]]) {
+      expect(await searchPlaces(body, "http://photon.test", photon(() => new Response("{}")).doFetch)).toEqual({ status: 400, body: { error: "invalid_request" } });
+    }
+  });
+
+  it("maps only rate_limited rpc errors to 429", () => {
+    expect(rpcFailure(null)).toBeNull();
+    expect(rpcFailure({ message: "rate_limited" })).toEqual({ status: 429, body: { error: "rate_limited" } });
+    expect(rpcFailure({ message: "connection refused" })).toEqual({ status: 502, body: { error: "search_unavailable" } });
   });
 });

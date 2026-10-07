@@ -10,6 +10,31 @@ jest.mock("expo-secure-store", () => ({
   deleteItemAsync: jest.fn(async (k: string) => void mockStore.delete(k)),
 }));
 
+const mockFiles = new Map<string, string>();
+jest.mock("expo-file-system", () => {
+  class File {
+    uri: string;
+    constructor(...parts: unknown[]) {
+      this.uri = parts.map((p) => (typeof p === "string" ? p : (p as { uri: string }).uri)).join("/");
+    }
+    get exists() {
+      return mockFiles.has(this.uri);
+    }
+    create() {
+      mockFiles.set(this.uri, "");
+    }
+    write(content: string) {
+      mockFiles.set(this.uri, content);
+    }
+    async text() {
+      return mockFiles.get(this.uri) ?? "";
+    }
+  }
+  return { File, Paths: { document: { uri: "doc" } } };
+});
+
+const recentsOnDisk = () => [...mockFiles.entries()].find(([k]) => k.endsWith("rdv-places-recents.json"))?.[1];
+
 jest.spyOn(Linking, "canOpenURL").mockResolvedValue(true);
 jest.spyOn(Linking, "openURL").mockResolvedValue(undefined as never);
 
@@ -88,6 +113,17 @@ describe("place search", () => {
     await fireEvent(inputs().at(-1)!, "focus");
     expect(await screen.findByTestId("places-empty")).toBeTruthy();
     expect(b.invoked[0]!.body).toEqual({ text: "zzzz", bias: { lat: 43.65, lng: -79.38 } });
+  });
+
+  it("clears recent searches from the device when the person signs out", async () => {
+    mockFiles.clear();
+    const { shell } = await mount();
+    await type("night meet");
+    await fireEvent(inputs().at(-1)!, "focus");
+    await fireEvent.press(await screen.findByTestId("places-result-0"));
+    await waitFor(() => expect(JSON.parse(recentsOnDisk() ?? "[]")).toContain("night meet"));
+    await act(async () => shell.session.set({ status: "signedOut" }));
+    await waitFor(() => expect(JSON.parse(recentsOnDisk()!)).toEqual([]));
   });
 
   it("offers Make an RDV only when an RDV create route is registered", async () => {

@@ -128,6 +128,21 @@ describe("pin registry", () => {
     expect(registry.store.get().map((p) => p.id)).toEqual(["rdvs:1", "rdvs:2"]);
   });
 
+  it("drops the previous source's subscription when an id is registered again", () => {
+    const registry = createPinRegistry();
+    const a = createStore<MapPin[]>([pin("1")]);
+    const b = createStore<MapPin[]>([pin("2")]);
+    const offA = registry.register({ id: "rdvs", pins: a });
+    registry.register({ id: "rdvs", pins: b });
+    let calls = 0;
+    registry.store.subscribe(() => calls++);
+    a.set([pin("7")]);
+    expect(calls).toBe(0);
+    expect(registry.store.get().map((p) => p.id)).toEqual(["rdvs:2"]);
+    offA();
+    expect(registry.store.get().map((p) => p.id)).toEqual(["rdvs:2"]);
+  });
+
   it("sends a press to the owning pin only", () => {
     const registry = createPinRegistry();
     const hit: string[] = [];
