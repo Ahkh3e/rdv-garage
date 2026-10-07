@@ -46,7 +46,7 @@ export function startReceiver(shell: Shell, hub: ChannelHub, extraCrews: () => C
     crews.add(crewId);
     memberCrews.set(userId, crews);
     // Stamped with the time it arrived here, not the sender's clock, which can be wrong by minutes.
-    lastPosition.set(userId, { lat: payload.lat, lng: payload.lng, heading: typeof payload.heading === "number" ? payload.heading : null, speedKmh: typeof payload.speed_kmh === "number" && payload.speed_kmh >= 0 ? payload.speed_kmh : null, ts: Date.now() });
+    lastPosition.set(userId, { lat: payload.lat, lng: payload.lng, heading: typeof payload.heading === "number" ? payload.heading : null, speedKmh: typeof payload.speed_kmh === "number" && Number.isFinite(payload.speed_kmh) && payload.speed_kmh >= 0 && payload.speed_kmh <= 400 ? Math.round(payload.speed_kmh) : null, ts: Date.now() });
     publish(userId);
   };
 

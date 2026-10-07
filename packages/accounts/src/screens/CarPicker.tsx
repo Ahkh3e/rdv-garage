@@ -6,14 +6,16 @@ import { CAR_ICONS, CAR_ICON_KEYS, CarIcon, Screen, Text, colors, radii, useActi
 export function CarPicker() {
   const shell = useShell();
   const session = useSession();
-  if (session.status !== "signedIn") return null;
-  const { profile } = session;
-
   const choose = useAction(async (key: string) => {
     Haptics.selectionAsync().catch(() => undefined);
     await shell.backend.rpc("accounts", "update_profile", { p_car_icon: key });
-    shell.session.set({ ...session, profile: { ...profile, carIcon: key } });
+    // Read the session after the request: it may have changed while the request was in flight.
+    const now = shell.session.get();
+    if (now.status === "signedIn") shell.session.set({ ...now, profile: { ...now.profile, carIcon: key } });
   });
+
+  if (session.status !== "signedIn") return null;
+  const { profile } = session;
 
   return (
     <Screen>

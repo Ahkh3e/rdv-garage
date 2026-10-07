@@ -117,7 +117,7 @@ export class LiveEngine {
       this.lastBroadcast = fix.ts;
       this.sent = [...this.sent.slice(-1), { lat: fix.lat, lng: fix.lng }];
       for (const crewId of this.crewIds) {
-        // Speed is never broadcast: it is shown after the session, not live (decision 0007).
+        // Speed goes in only when the person chose to show it to the crew, and is never stored (decision 0022).
         this.deps.broadcast(crewId, "pos", this.payload(fix, fix.ts));
       }
     }
