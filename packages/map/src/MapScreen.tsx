@@ -50,6 +50,9 @@ export function MapScreen() {
   const positions = usePositions();
   const camera = useRef<CameraRef>(null);
   const lastHeading = useRef(0);
+  const moveSeq = useRef(0);
+  // The pitch to restore while a far move has the camera levelled; the newest move restores it.
+  const levelled = useRef<number | null>(null);
   const center = useRef<{ lat: number; lng: number } | null>(null);
   const zoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const followZoom = useRef<number>(FOLLOW_CAMERA.zoom);
@@ -135,19 +138,26 @@ export function MapScreen() {
   const moveCamera = (point: { lat: number; lng: number }, zoomTo: number, duration: number) => {
     const target = { center: [point.lng, point.lat] as [number, number], zoom: zoomTo };
     const near = center.current !== null && haversineMeters(center.current, point) <= NEAR_DISTANCE_M;
+    const mine = ++moveSeq.current;
+    const restore = levelled.current ?? pitch.current;
     if (near) {
-      camera.current?.easeTo({ ...target, pitch: pitch.current, bearing: 0, duration });
+      levelled.current = null;
+      camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration });
       return;
     }
-    const restore = pitch.current;
+    levelled.current = restore;
     void (async () => {
       try {
         await camera.current?.setStop({ pitch: 0, duration: 0 });
+        if (mine !== moveSeq.current) return;
         camera.current?.jumpTo({ ...target, pitch: 0, bearing: 0 });
       } catch (error) {
         console.warn("map camera jump failed", error);
       } finally {
-        camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration: 500 });
+        if (mine === moveSeq.current) {
+          levelled.current = null;
+          camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration });
+        }
       }
     })();
   };

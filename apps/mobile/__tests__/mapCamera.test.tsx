@@ -32,7 +32,7 @@ describe("far camera moves", () => {
     await act(async () => shell.mapBridge.flyTo({ lat: 45.5, lng: -73.6 }, 14));
     expect(cameraApi.setStop).toHaveBeenCalledWith({ pitch: 0, duration: 0 });
     expect(cameraApi.jumpTo).toHaveBeenCalledWith({ center: [-73.6, 45.5], zoom: 14, pitch: 0, bearing: 0 });
-    expect(cameraApi.easeTo).toHaveBeenCalledWith(expect.objectContaining({ center: [-73.6, 45.5], bearing: 0, duration: 500 }));
+    expect(cameraApi.easeTo).toHaveBeenCalledWith(expect.objectContaining({ center: [-73.6, 45.5], bearing: 0, duration: 700 }));
   });
 
   it("still restores the pitch and reports the error when a step rejects", async () => {
@@ -41,8 +41,23 @@ describe("far camera moves", () => {
     cameraApi.setStop.mockRejectedValueOnce(new Error("native"));
     await act(async () => shell.mapBridge.flyTo({ lat: 45.5, lng: -73.6 }, 14));
     expect(cameraApi.jumpTo).not.toHaveBeenCalled();
-    expect(cameraApi.easeTo).toHaveBeenCalledWith(expect.objectContaining({ pitch: expect.any(Number), duration: 500 }));
+    expect(cameraApi.easeTo).toHaveBeenCalledWith(expect.objectContaining({ pitch: expect.any(Number), duration: 700 }));
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("lets a newer far move supersede an older one, restoring the pitch once", async () => {
+    const shell = await mount();
+    const releases: (() => void)[] = [];
+    cameraApi.setStop.mockImplementation(() => new Promise<void>((resolve) => releases.push(resolve)));
+    await act(async () => {
+      shell.mapBridge.flyTo({ lat: 45.5, lng: -73.6 }, 14);
+      shell.mapBridge.flyTo({ lat: 49.2, lng: -123.1 }, 12);
+    });
+    await act(async () => releases.forEach((release) => release()));
+    expect(cameraApi.jumpTo).toHaveBeenCalledTimes(1);
+    expect(cameraApi.jumpTo).toHaveBeenCalledWith(expect.objectContaining({ center: [-123.1, 49.2], zoom: 12 }));
+    expect(cameraApi.easeTo).toHaveBeenCalledTimes(1);
+    expect(cameraApi.easeTo).toHaveBeenCalledWith(expect.objectContaining({ center: [-123.1, 49.2], duration: 700 }));
   });
 });
