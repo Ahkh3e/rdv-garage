@@ -5,6 +5,8 @@ import { haversineMeters, msToKmh } from "./geo";
 import { parseLink } from "./links";
 import { createChunkedStorage, type KeyValueStore } from "./secureStorage";
 import { createStore } from "./store";
+import { createPinRegistry } from "./pins";
+import type { MapPin } from "./contracts";
 import { formatDaySet, previousWeekStart, torontoWeekStart } from "./week";
 
 describe("torontoWeekStart", () => {
@@ -105,5 +107,33 @@ describe("chunked secure storage", () => {
     await storage.removeItem("session");
     expect(await storage.getItem("session")).toBeNull();
     expect(mem.data.size).toBe(0);
+  });
+});
+
+describe("pin registry", () => {
+  const pin = (id: string, onPress = () => undefined): MapPin => ({ id, lat: 43.7, lng: -79.4, label: id, kind: "rdv", colorKey: 0, onPress });
+
+  it("merges sources, namespaces ids and follows updates", () => {
+    const registry = createPinRegistry();
+    const a = createStore<MapPin[]>([pin("1")]);
+    const b = createStore<MapPin[]>([pin("1")]);
+    registry.register({ id: "rdvs", pins: a });
+    const off = registry.register({ id: "places", pins: b });
+    expect(registry.store.get().map((p) => p.id)).toEqual(["rdvs:1", "places:1"]);
+    a.set([pin("1"), pin("2")]);
+    expect(registry.store.get()).toHaveLength(3);
+    off();
+    b.set([pin("9")]);
+    expect(registry.store.get().map((p) => p.id)).toEqual(["rdvs:1", "rdvs:2"]);
+  });
+
+  it("sends a press to the owning pin only", () => {
+    const registry = createPinRegistry();
+    const hit: string[] = [];
+    registry.register({ id: "rdvs", pins: createStore([pin("1", () => void hit.push("rdvs"))]) });
+    registry.register({ id: "places", pins: createStore([pin("1", () => void hit.push("places"))]) });
+    registry.press("places:1");
+    registry.press("nope:1");
+    expect(hit).toEqual(["places"]);
   });
 });

@@ -121,6 +121,41 @@ export interface LiveState {
   crewIds: CrewId[];
 }
 
+// ---- Map pins and handoff -----------------------------------------------------
+export interface MapPin {
+  id: string;
+  lat: number;
+  lng: number;
+  label: string;
+  kind: string;
+  // Index into the crew tints (crewStyle); use the owning crew's styleIndex.
+  colorKey: number;
+  // Runs when the pin is tapped. The owning module opens its detail, normally with shell.navigate.
+  onPress(): void;
+}
+
+export interface PinSource {
+  id: string;
+  pins: Store<MapPin[]>;
+}
+
+export interface PinRegistry {
+  // Every registered pin, ids namespaced as `<source id>:<pin id>`.
+  store: Store<MapPin[]>;
+  register(source: PinSource): Unsubscribe;
+  press(id: string): void;
+}
+
+export interface DirectionsTarget {
+  lat: number;
+  lng: number;
+  label: string;
+}
+
+export interface Handoff {
+  openDirections(target: DirectionsTarget): Promise<void>;
+}
+
 // ---- Shell and modules --------------------------------------------------------
 export interface Tab {
   id: string;
@@ -158,6 +193,9 @@ export interface Shell {
   crewContext: CrewContext;
   locationStream: LocationStream;
   live: Store<LiveState>;
+  pins: PinRegistry;
+  handoff: Handoff;
+  setHandoff(handoff: Handoff): void;
   addTab(tab: Tab): void;
   addRoute(route: Route): void;
   addFlag(name: string, defaultValue: boolean): void;
