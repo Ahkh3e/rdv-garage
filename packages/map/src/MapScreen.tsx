@@ -125,7 +125,8 @@ export function MapScreen() {
     // Ease for as long as the last fix took to arrive, so each move ends as the next begins instead of pausing in between.
     const now = Date.now();
     const raw = Math.min(1200, Math.max(250, now - lastEase.current));
-    easeSpan.current = easeSpan.current === 0 ? raw : easeSpan.current * 0.8 + raw * 0.2;
+    // Only follow-camera eases (no explicit duration) feed the smoothed span; a button press must not drag it around.
+    if (duration === undefined) easeSpan.current = easeSpan.current === 0 ? raw : easeSpan.current * 0.8 + raw * 0.2;
     const span = duration ?? easeSpan.current;
     lastEase.current = now;
     duration = span;

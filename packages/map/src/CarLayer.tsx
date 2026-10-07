@@ -105,6 +105,7 @@ export function CarLayer({ cars, zoom }: { cars: CarInput[]; zoom: number }) {
         <Layer
           type="fill-extrusion"
           id="cars-3d"
+          minzoom={MIN_MODEL_ZOOM}
           paint={{
             "fill-extrusion-color": ["get", "color"],
             "fill-extrusion-height": ["get", "top"],
