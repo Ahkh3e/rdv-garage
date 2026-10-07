@@ -36,6 +36,7 @@ const turn = (from: number, to: number) => ((((to - from) % 360) + 540) % 360) -
 export function CarLayer({ cars, zoom }: { cars: CarInput[]; zoom: number }) {
   const samples = useRef<Record<string, Sample[]>>({});
   const self = useRef<Record<string, Glide>>({});
+  const interval = useRef<Record<string, number>>({});
   const [, setTick] = useState(0);
 
   const current = (car: CarInput) => {
@@ -63,7 +64,9 @@ export function CarLayer({ cars, zoom }: { cars: CarInput[]; zoom: number }) {
         if (!g) self.current[car.id] = { from: to, to, t0: now, ms: 1 };
         else if (Math.abs(g.to.lng - to.lng) + Math.abs(g.to.lat - to.lat) + Math.abs(turn(g.to.heading, to.heading)) > 1e-9) {
           // Glide for as long as the last fix took to arrive, so one glide ends as the next begins and it never stops and starts.
-          const ms = Math.min(MAX_SELF_GLIDE_MS, Math.max(MIN_SELF_GLIDE_MS, now - g.t0));
+          // A smoothed interval, not the latest one: fixes arrive unevenly, and following each wobble makes the car pulse.
+          const raw = Math.min(MAX_SELF_GLIDE_MS, Math.max(MIN_SELF_GLIDE_MS, now - g.t0));
+          const ms = (interval.current[car.id] = interval.current[car.id] === undefined ? raw : interval.current[car.id]! * 0.8 + raw * 0.2);
           self.current[car.id] = { from: current(car) ?? g.to, to, t0: now, ms };
         }
       } else {

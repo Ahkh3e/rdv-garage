@@ -120,10 +120,13 @@ export function MapScreen() {
   }, [focused]);
 
   const lastEase = useRef(0);
+  const easeSpan = useRef(0);
   const easeToMe = useCallback((at: Me, duration?: number) => {
     // Ease for as long as the last fix took to arrive, so each move ends as the next begins instead of pausing in between.
     const now = Date.now();
-    const span = duration ?? Math.min(1200, Math.max(250, now - lastEase.current));
+    const raw = Math.min(1200, Math.max(250, now - lastEase.current));
+    easeSpan.current = easeSpan.current === 0 ? raw : easeSpan.current * 0.8 + raw * 0.2;
+    const span = duration ?? easeSpan.current;
     lastEase.current = now;
     duration = span;
     if (at.heading !== null) lastHeading.current = holdHeading(headings.current.me, at.heading);
