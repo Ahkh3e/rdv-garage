@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Button, Chip, Disclaimer, Glass, PulseDot, Sheet, Text, Toggle, colors, crewStyle, messageFor, radii, useCrewState, useLiveState, useShell } from "@rdv/core";
+import { Button, Chip, Disclaimer, Glass, PulseDot, Sheet, Text, Toggle, colors, crewStyle, messageFor, radii, useCrewState, useLiveState, useShell, useStore } from "@rdv/core";
 import type { LiveController } from "./controller";
 import { openSettings } from "./permissions";
 
@@ -20,8 +20,25 @@ export function GoLiveControl() {
   const [error, setError] = useState<string | null>(null);
   const [needsSettings, setNeedsSettings] = useState(false);
 
+  const request = useStore(shell.goLiveRequest);
+  const preset = useRef(false);
+
   useEffect(() => {
-    if (open) setPicked(crewState.selected.length ? crewState.selected : crewState.crews.map((c) => c.id).slice(0, 1));
+    if (!request) return;
+    shell.goLiveRequest.set(null);
+    if (!controller || live.live) return;
+    const mine = request.crewIds.filter((id) => crewState.crews.some((c) => c.id === id));
+    if (mine.length === 0) return;
+    preset.current = !open;
+    setPicked(mine);
+    setOpen(true);
+  }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (open) {
+      if (preset.current) preset.current = false;
+      else setPicked(crewState.selected.length ? crewState.selected : crewState.crews.map((c) => c.id).slice(0, 1));
+    }
     setError(null);
     setNeedsSettings(false);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps

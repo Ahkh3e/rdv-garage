@@ -121,6 +121,11 @@ export interface LiveState {
   crewIds: CrewId[];
 }
 
+// Asks the Go live sheet to open with these crews chosen. The person still taps Start.
+export interface GoLiveRequest {
+  crewIds: CrewId[];
+}
+
 // ---- Map pins and handoff -----------------------------------------------------
 export interface MapPin {
   id: string;
@@ -250,6 +255,9 @@ export interface Shell {
   crewContext: CrewContext;
   locationStream: LocationStream;
   live: Store<LiveState>;
+  goLiveRequest: Store<GoLiveRequest | null>;
+  // Opens the Go live sheet on the map with these crews preselected; nothing starts until the person taps Start.
+  requestGoLive(crewIds: CrewId[]): void;
   pins: PinRegistry;
   handoff: Handoff;
   setHandoff(handoff: Handoff): void;
@@ -263,7 +271,7 @@ export interface Shell {
   addRoute(route: Route): void;
   addFlag(name: string, defaultValue: boolean): void;
   isEnabled(name: string): boolean;
-  addSlot(slot: string, component: ComponentType, order?: number): void;
+  addSlot(slot: string, component: ComponentType<any>, order?: number): void;
   addMenuItem(item: MenuItem): void;
   addLinkHandler(handler: LinkHandler): void;
   setAuthFlow(component: ComponentType): void;

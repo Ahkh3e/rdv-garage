@@ -117,7 +117,7 @@ export function RdvDetail({ navigation, route }: { navigation: any; route: { par
         <Card style={styles.card}>
           <Text variant="headline">Go live for this RDV?</Text>
           <Text variant="body" muted>Your crew sees where you are only while you are live.</Text>
-          <Button testID="rdv-offer-go-live" title="Open Go live" onPress={() => { setOffer(false); shell.navigate("Tabs", { screen: "Map" }); }} />
+          <Button testID="rdv-offer-go-live" title="Open Go live" onPress={() => { setOffer(false); shell.requestGoLive(rdv.crewIds.filter((id) => crews.some((c) => c.id === id))); }} />
           <Button testID="rdv-offer-dismiss" title="Not now" variant="ghost" onPress={() => setOffer(false)} />
         </Card>
       ) : null}
