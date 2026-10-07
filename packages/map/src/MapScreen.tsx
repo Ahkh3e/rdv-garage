@@ -5,7 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Button, CarIcon, Glass, GlassButton, PIN_KIND, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, useShell, useStore } from "@rdv/core";
+import { Avatar, Button, CarIcon, Glass, GlassButton, PIN_KIND, RDV_KIND, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, useShell, useStore } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
 import { PinLayer } from "./PinLayer";
 import { poisFromFeatures } from "./pois";
@@ -22,6 +22,7 @@ const SHEET_OVERLAP = 20;
 const MIN_ZOOM = 3;
 const MAX_ZOOM = 19;
 const JUMP_ZOOM = 16;
+const NEAR_DISTANCE_M = 400;
 const ROAD_LAYERS = ["road-service", "road-minor", "road-tertiary", "road-secondary", "road-primary", "road-trunk", "road-motorway"];
 const MIN_SNAP_ZOOM = 13.5;
 // Like a navigation route: the trail is as wide as the road under it, so its width follows the map style's road widths.
@@ -38,13 +39,16 @@ interface Me {
 export function MapScreen() {
   const focused = useIsFocused();
   const shell = useShell();
-  const droppedPins = useStore(shell.pins.store).filter((pin) => pin.kind === PIN_KIND);
+  const allPins = useStore(shell.pins.store);
+  const droppedPins = allPins.filter((pin) => pin.kind === PIN_KIND);
+  const rdvPins = allPins.filter((pin) => pin.kind === RDV_KIND);
   const navigation = useNavigation<any>();
   const session = useSession();
   const crewState = useCrewState();
   const positions = usePositions();
   const camera = useRef<CameraRef>(null);
   const lastHeading = useRef(0);
+  const center = useRef<{ lat: number; lng: number } | null>(null);
   const zoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const followZoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const [follow, setFollow] = useState(true);
@@ -124,6 +128,21 @@ export function MapScreen() {
     };
   }, [focused]);
 
+  // The native camera fits the target inside the current pitched view, which clamps targets far from where the map is
+  // looking. A far move levels the camera, jumps, then restores the pitch.
+  const moveCamera = (point: { lat: number; lng: number }, zoomTo: number, duration: number) => {
+    const target = { center: [point.lng, point.lat] as [number, number], zoom: zoomTo };
+    if (center.current && haversineMeters(center.current, point) <= NEAR_DISTANCE_M) {
+      camera.current?.easeTo({ ...target, pitch: pitch.current, bearing: 0, duration });
+      return;
+    }
+    const restore = pitch.current;
+    Promise.resolve(camera.current?.setStop({ pitch: 0, duration: 0 }))
+      .then(() => camera.current?.jumpTo(target))
+      .then(() => camera.current?.easeTo({ pitch: restore, duration: 500 } as never))
+      .catch(() => undefined);
+  };
+
   useEffect(
     () =>
       shell.mapBridge.attach({
@@ -132,7 +151,7 @@ export function MapScreen() {
           setFollow(false);
           setFollowMember(false);
           setExpanded(true);
-          camera.current?.easeTo({ center: [point.lng, point.lat], zoom: target ?? Math.max(zoom.current, JUMP_ZOOM), pitch: pitch.current, bearing: 0, duration: 700 });
+          moveCamera(point, target ?? Math.max(zoom.current, JUMP_ZOOM), 700);
         },
       }),
     [shell],
@@ -317,7 +336,7 @@ export function MapScreen() {
     setFollowMember(false);
     setFollow(false);
     setExpanded(true);
-    camera.current?.easeTo({ center: [lng, lat], zoom: JUMP_ZOOM, pitch: view3d ? 45 : FLAT_PITCH, bearing: 0, duration: 800 });
+    moveCamera({ lat, lng }, JUMP_ZOOM, 800);
   };
 
   const rehome = () => {
@@ -370,6 +389,7 @@ export function MapScreen() {
           onLongPress={(event) => shell.mapBridge.longPress({ lat: event.nativeEvent.lngLat[1]!, lng: event.nativeEvent.lngLat[0]! })}
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
+            center.current = { lat: event.nativeEvent.center[1]!, lng: event.nativeEvent.center[0]! };
             setMapZoom(Math.round(event.nativeEvent.zoom * 4) / 4);
             refreshRoads(event.nativeEvent.center as [number, number]);
             shell.mapBridge.setView({ lat: event.nativeEvent.center[1]!, lng: event.nativeEvent.center[0]!, zoom: event.nativeEvent.zoom });
@@ -432,6 +452,15 @@ export function MapScreen() {
                   <Text variant="caption" color={colors.muted} numberOfLines={1}>Live  ·  {selectedInfo.crewNames.join(", ")}</Text>
                 </View>
               </View>
+              <Pressable
+                testID="map-card-directions"
+                accessibilityRole="button"
+                accessibilityLabel={`Directions to ${selectedInfo.handle}`}
+                onPress={() => shell.handoff.openDirections({ lat: selectedPosition.lat, lng: selectedPosition.lng, label: `@${selectedInfo.handle}` }).catch(() => undefined)}
+                style={[styles.cardButton, { backgroundColor: colors.accent, borderColor: colors.accent }]}
+              >
+                <Text variant="caption" bold color={colors.onAccent}>Directions</Text>
+              </Pressable>
               <Pressable testID="map-card-follow" accessibilityRole="button" accessibilityLabel={followMember ? "Stop following" : "Follow"} onPress={() => setFollowMember((v) => !v)} style={[styles.cardButton, followMember && { backgroundColor: colors.accentSoft, borderColor: colors.accentBright }]}>
                 <Text variant="caption" bold color={followMember ? colors.accentBright : colors.text}>{followMember ? "Following" : "Follow"}</Text>
               </Pressable>
@@ -498,7 +527,8 @@ export function MapScreen() {
               accessibilityLabel={`Show pin ${pin.label} on the map`}
               onPress={() => {
                 Haptics.selectionAsync().catch(() => undefined);
-                jumpTo(pin.id, pin.lat, pin.lng);
+                shell.mapBridge.flyTo({ lat: pin.lat, lng: pin.lng });
+                shell.pins.press(pin.id);
                 shell.pins.press(pin.id);
               }}
               style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }]}
@@ -512,7 +542,31 @@ export function MapScreen() {
               </View>
             </Pressable>
           ))}
-          {droppedPins.length > 0 && members.length > 0 ? <Text variant="caption" muted style={styles.listHeading}>MEMBERS</Text> : null}
+          {rdvPins.length > 0 ? <Text variant="caption" muted style={styles.listHeading}>RDVS</Text> : null}
+          {rdvPins.map((pin, i) => (
+            <Pressable
+              key={pin.id}
+              testID={`map-rdv-${pin.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Show RDV ${pin.label} on the map`}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => undefined);
+                shell.mapBridge.flyTo({ lat: pin.lat, lng: pin.lng });
+                shell.pins.press(pin.id);
+                shell.pins.press(pin.id);
+              }}
+              style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }]}
+            >
+              <View style={[styles.pinBadge, { backgroundColor: crewStyle(pin.colorKey).tint }]}>
+                <Feather name="flag" size={20} color={colors.onAccent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="headline" numberOfLines={1}>{pin.label}</Text>
+                <Text variant="caption" color={colors.muted} numberOfLines={1}>RDV</Text>
+              </View>
+            </Pressable>
+          ))}
+          {(droppedPins.length > 0 || rdvPins.length > 0) && members.length > 0 ? <Text variant="caption" muted style={styles.listHeading}>MEMBERS</Text> : null}
           {members.map((m, i) => {
             const tint = crewStyle(m.styleIndex).tint;
             const position = m.position;
