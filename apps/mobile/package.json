@@ -16,6 +16,7 @@
     "@rdv/map": "workspace:*",
     "@rdv/maps-handoff": "workspace:*",
     "@rdv/notifications": "workspace:*",
+    "@rdv/places": "workspace:*",
     "@rdv/referral": "workspace:*",
     "@react-navigation/bottom-tabs": "^7.20.0",
     "@react-navigation/native": "^7.5.0",
