@@ -458,15 +458,6 @@ export function MapScreen() {
                   <Text variant="caption" color={colors.muted} numberOfLines={1}>Live  ·  {selectedInfo.crewNames.join(", ")}</Text>
                 </View>
               </View>
-              <Pressable
-                testID="map-card-directions"
-                accessibilityRole="button"
-                accessibilityLabel={`Directions to ${selectedInfo.handle}`}
-                onPress={() => shell.handoff.openDirections({ lat: selectedPosition.lat, lng: selectedPosition.lng, label: `@${selectedInfo.handle}` }).catch(() => undefined)}
-                style={[styles.cardButton, { backgroundColor: colors.accent, borderColor: colors.accent }]}
-              >
-                <Text variant="caption" bold color={colors.onAccent}>Directions</Text>
-              </Pressable>
               <Pressable testID="map-card-follow" accessibilityRole="button" accessibilityLabel={followMember ? "Stop following" : "Follow"} onPress={() => setFollowMember((v) => !v)} style={[styles.cardButton, followMember && { backgroundColor: colors.accentSoft, borderColor: colors.accentBright }]}>
                 <Text variant="caption" bold color={followMember ? colors.accentBright : colors.text}>{followMember ? "Following" : "Follow"}</Text>
               </Pressable>
