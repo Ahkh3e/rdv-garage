@@ -136,6 +136,17 @@ describe("place search", () => {
     await waitFor(() => expect(screen.queryByText("Type at least 3 characters.")).toBeNull());
   });
 
+  it("keeps the search panel when the field is focused again before the idle check runs", async () => {
+    mockFiles.clear();
+    await mount();
+    await fireEvent(inputs().at(-1)!, "focus");
+    await type("t");
+    await fireEvent(inputs().at(-1)!, "blur");
+    await fireEvent(inputs().at(-1)!, "focus");
+    await new Promise((r) => setTimeout(r, 400));
+    expect(screen.getByText("Type at least 3 characters.")).toBeTruthy();
+  });
+
   it("dismisses the keyboard and closes the idle search panel when the map is tapped", async () => {
     mockFiles.clear();
     await mount();
