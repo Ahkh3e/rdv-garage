@@ -194,7 +194,8 @@ export function MapScreen() {
     const next: Record<string, TrailSet> = {};
     for (const p of others) {
       const info = lookup.get(p.userId);
-      if (!info) continue;
+      // Someone who has stopped sending updates keeps their marker (it fades) but their trail is cleared.
+      if (!info || t - p.ts > FADE_AFTER_MS) continue;
       const point: TrailPoint = { lng: p.lng, lat: p.lat, ts: p.ts };
       next[p.userId] = { color: crewStyle(info.styleIndex).tint, points: appendTrail(trails.current[p.userId]?.points ?? [], point, t) };
     }
