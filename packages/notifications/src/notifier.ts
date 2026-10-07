@@ -17,6 +17,14 @@ export interface Notifier {
 
 export function createNotifier(): Notifier {
   let activity: { id: string; state: LiveActivity.LiveActivityState } | null = null;
+  let asked = false;
+  // Showing and hiding run one after the other, so a quick start then stop cannot leave a stale indicator behind.
+  let queue: Promise<unknown> = Promise.resolve();
+  const serial = <T>(work: () => Promise<T>): Promise<T> => {
+    const next = queue.then(work, work);
+    queue = next.catch(() => undefined);
+    return next;
+  };
   // Banners show even while the app is open; the module decides when a banner is worth showing.
   Notifications.setNotificationHandler({
     handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
@@ -32,10 +40,12 @@ export function createNotifier(): Notifier {
     async ensurePermission() {
       const current = await Notifications.getPermissionsAsync();
       if (current.granted) return true;
-      if (!current.canAskAgain) return false;
+      // Android keeps saying it can ask again after a refusal; asking at every Go live would nag, so ask once per launch.
+      if (!current.canAskAgain || asked) return false;
+      asked = true;
       return (await Notifications.requestPermissionsAsync()).granted;
     },
-    async showLive() {
+    showLive: () => serial(async () => {
       // No crew names: a person can be live to several crews at once.
       const subtitle = "Sharing your live location with your crews";
       if (Platform.OS === "ios") {
@@ -70,8 +80,8 @@ export function createNotifier(): Notifier {
         content: { title: "You're live", body: `${subtitle}. Open RDV Garage to stop.`, sticky: true, autoDismiss: false },
         trigger: null,
       });
-    },
-    async hideLive() {
+    }),
+    hideLive: () => serial(async () => {
       if (activity) {
         try {
           LiveActivity.stopActivity(activity.id, { ...activity.state, title: "Live ended", subtitle: "You are no longer sharing" });
@@ -92,13 +102,13 @@ export function createNotifier(): Notifier {
       }
       await Notifications.dismissNotificationAsync(LIVE_NOTIFICATION_ID).catch(() => undefined);
       await Notifications.cancelScheduledNotificationAsync(LIVE_NOTIFICATION_ID).catch(() => undefined);
-    },
+    }),
     async showFriend(userId, handle, crewName) {
       await channel();
       await Notifications.scheduleNotificationAsync({
         identifier: `rdv-friend-${userId}`,
         content: { title: `@${handle} is live`, body: crewName ?? "Open RDV Garage to see them on the map", sound: false },
-        trigger: null,
+        trigger: Platform.OS === "android" ? { channelId: LIVE_CHANNEL } : null,
       });
     },
   };
