@@ -165,7 +165,8 @@ export function MapScreen() {
     return headings.current[id] ?? 0;
   };
   const others = Object.values(positions).filter(
-    (p) => p.userId !== myId && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
+    // Only members who are live: someone who stopped sending updates is off the map, not shown dimmed or idle.
+    (p) => p.userId !== myId && now - p.ts <= FADE_AFTER_MS && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
 
   // The road lines the map has already loaded for what is on screen. Trails are matched to these on the phone only.
@@ -260,7 +261,7 @@ export function MapScreen() {
   const cars: CarInput[] = [
     ...others.map((p) => {
       const info = lookup.get(p.userId)!;
-      return { id: p.userId, lng: p.lng, lat: p.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: crewStyle(info.styleIndex).tint, label: info.handle, stale: now - p.ts > FADE_AFTER_MS };
+      return { id: p.userId, lng: p.lng, lat: p.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: crewStyle(info.styleIndex).tint, label: info.handle };
     }),
     ...(me ? [{ id: "me", lng: headPosition("me", me).lng, lat: headPosition("me", me).lat, heading: headingFor("me", me.heading), icon: myIcon, color: colors.accentBright, self: true }] : []),
   ];
@@ -456,7 +457,6 @@ export function MapScreen() {
           {members.map((m, i) => {
             const tint = crewStyle(m.styleIndex).tint;
             const position = m.position;
-            const fresh = position ? now - position.ts <= FADE_AFTER_MS : false;
             return (
               <Pressable
                 key={m.id}
@@ -479,15 +479,15 @@ export function MapScreen() {
                 <CarIcon icon={m.carIcon} size={22} color={position ? colors.muted : colors.disabled} />
                 {position ? (
                   <View style={styles.status}>
-                    {fresh && position.speedKmh !== null && position.speedKmh !== undefined && position.speedKmh >= 3 ? (
+                    {position.speedKmh !== null && position.speedKmh !== undefined && position.speedKmh >= 3 ? (
                       <View style={styles.speed}>
                         <Text variant="numeral" style={{ fontSize: 18, lineHeight: 22 }}>{position.speedKmh}</Text>
                         <Text variant="caption" color={colors.subtle}>km/h</Text>
                       </View>
                     ) : (
                       <>
-                        <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accentBright : colors.subtle }]} />
-                        <Text variant="caption" color={fresh ? colors.text : colors.subtle}>{fresh ? "Live" : "Idle"}</Text>
+                        <View style={[styles.statusDot, { backgroundColor: colors.accentBright }]} />
+                        <Text variant="caption" color={colors.text}>Live</Text>
                       </>
                     )}
                   </View>
