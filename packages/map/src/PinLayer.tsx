@@ -17,6 +17,8 @@ export function PinLayer() {
   const data = useMemo<GeoJSON.FeatureCollection>(() => ({ type: "FeatureCollection", features: pinFeatures(pins) }), [pins]);
 
   return (
+    <>
+      <Images images={{ "rdv-pin": PIN_IMAGE, "rdv-flag": FLAG_IMAGE }} />
     <GeoJSONSource
       id="pins"
       data={data}
@@ -25,7 +27,6 @@ export function PinLayer() {
         if (typeof id === "string") shell.pins.press(id);
       }}
     >
-      <Images images={{ "rdv-pin": PIN_IMAGE, "rdv-flag": FLAG_IMAGE }} />
       <Layer
         type="symbol"
         id="pins-glyph"
@@ -56,5 +57,6 @@ export function PinLayer() {
         style={{ textField: ["get", "label"], textSize: 12, textOffset: [0, 0.3], textAnchor: "top", textColor: colors.text, textHaloColor: colors.background, textHaloWidth: 1.5, textOptional: true }}
       />
     </GeoJSONSource>
+    </>
   );
 }
