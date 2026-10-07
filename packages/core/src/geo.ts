@@ -8,6 +8,11 @@ export function haversineMeters(a: { lat: number; lng: number }, b: { lat: numbe
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+export function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.max(10, Math.round(meters / 10) * 10)} m`;
+  return `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0)} km`;
+}
+
 export const msToKmh = (ms: number): number => ms * 3.6;
 
 // Compass bearing in degrees (0 is north, clockwise) from one point to another.

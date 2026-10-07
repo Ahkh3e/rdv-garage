@@ -201,8 +201,11 @@ export interface MapController {
 export interface MapBridge {
   // Center and zoom of the map on screen, null until the map has reported.
   view: Store<MapView | null>;
+  // The device position as the map last saw it, null until it has one.
+  me: Store<GeoPoint | null>;
   attach(controller: MapController | null): Unsubscribe;
   setView(view: MapView): void;
+  setMe(point: GeoPoint | null): void;
   // Points of interest currently rendered, read on the device. Empty when no map is attached.
   pois(): Promise<Poi[]>;
   flyTo(point: GeoPoint, zoom?: number): void;

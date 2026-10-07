@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { DISCLAIMER_PLACES, Text, colors, messageFor, radii, crewStyle, useCrewState, type Place } from "@rdv/core";
+import { DISCLAIMER_PLACES, Text, colors, messageFor, radii, crewStyle, useCrewState, useDistanceLabel, type Place } from "@rdv/core";
 import { useController } from "./context";
 import { expiresIn, placeOfPin, type Pin } from "./pins";
 
@@ -49,8 +49,9 @@ function useActions() {
 
 export function PlaceCard({ place }: { place: Place }) {
   const { controller, error, run } = useActions();
+  const away = useDistanceLabel(place);
   return (
-    <CardShell testID="place-card" title={place.name} subtitle={[place.kind, place.address].filter(Boolean).join("  ·  ")} onClose={controller.clearSelection}>
+    <CardShell testID="place-card" title={place.name} subtitle={[place.kind, away ? `${away} away` : null, place.address].filter(Boolean).join("  ·  ")} onClose={controller.clearSelection}>
       <View style={styles.actions}>
         <Action testID="place-card-directions" title="Directions" primary onPress={() => run(() => controller.directions(place))} />
         <Action testID="place-card-drop" title="Drop pin" onPress={() => controller.startDrop(place)} />
@@ -66,11 +67,12 @@ export function PinCard({ pin, now }: { pin: Pin; now: number }) {
   const crews = useCrewState().crews;
   const crew = crews.find((c) => pin.crewIds.includes(c.id));
   const place = placeOfPin(pin);
+  const away = useDistanceLabel(pin);
   return (
     <CardShell
       testID="pin-card"
       title={pin.label}
-      subtitle={[`@${pin.dropperHandle}`, expiresIn(pin, now), pin.address].filter(Boolean).join("  ·  ")}
+      subtitle={[`@${pin.dropperHandle}`, away ? `${away} away` : null, expiresIn(pin, now), pin.address].filter(Boolean).join("  ·  ")}
       tint={crewStyle(crew?.styleIndex ?? 0).tint}
       onClose={controller.clearSelection}
     >

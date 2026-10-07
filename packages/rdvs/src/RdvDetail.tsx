@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
-import { Banner, Button, Card, Empty, Screen, Text, colors, useAction, useCrewState, useLiveState, useSession, useShell } from "@rdv/core";
+import { Banner, Button, Card, Empty, Screen, Text, colors, useAction, useCrewState, useDistanceLabel, useLiveState, useSession, useShell } from "@rdv/core";
 import { EDIT_ROUTE, type Person } from "./controller";
 import { useController } from "./context";
 import { formatWhen } from "./format";
@@ -17,6 +17,7 @@ export function RdvDetail({ navigation, route }: { navigation: any; route: { par
   const live = useLiveState();
   const now = useNow(15000);
   const rdv = useRdvs().find((r) => r.id === route.params.id) ?? null;
+  const away = useDistanceLabel(rdv?.place);
   const me = session.status === "signedIn" ? session.userId : null;
   const [people, setPeople] = useState<Person[]>([]);
   const [offer, setOffer] = useState(false);
@@ -77,7 +78,7 @@ export function RdvDetail({ navigation, route }: { navigation: any; route: { par
         <Text variant="body" testID="rdv-when">{formatWhen(rdv.startsAt, rdv.endsAt, now)}</Text>
         <Text variant="label" muted>Where</Text>
         {rdv.place ? (
-          <Text variant="body">{rdv.place.name}</Text>
+          <Text variant="body" testID="rdv-where">{away ? `${rdv.place.name}  ·  ${away} away` : rdv.place.name}</Text>
         ) : (
           <>
             <Text variant="body">{rdv.areaName}</Text>

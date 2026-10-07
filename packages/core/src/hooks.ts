@@ -1,5 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { messageFor } from "./errors";
+import { formatDistance, haversineMeters } from "./geo";
+import { useShell } from "./shell";
+import { useStore } from "./store";
 
 // Runs an async action with loading and error state. Ignores calls while one is in flight.
 export function useAction<Args extends unknown[], R>(fn: (...args: Args) => Promise<R>) {
@@ -26,4 +29,11 @@ export function useAction<Args extends unknown[], R>(fn: (...args: Args) => Prom
     [fn],
   );
   return { run, loading, error, setError };
+}
+
+// How far a point is from the device, as text like "1.2 km", or null while the position is unknown.
+export function useDistanceLabel(point: { lat: number; lng: number } | null | undefined): string | null {
+  const shell = useShell();
+  const me = useStore(shell.mapBridge.me);
+  return point && me ? formatDistance(haversineMeters(me, point)) : null;
 }

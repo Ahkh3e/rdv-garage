@@ -5,7 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Button, CarIcon, Glass, GlassButton, PIN_KIND, RDV_KIND, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, useShell, useStore } from "@rdv/core";
+import { Avatar, Button, CarIcon, Glass, GlassButton, PIN_KIND, RDV_KIND, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, formatDistance, useShell, useStore } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
 import { PinLayer } from "./PinLayer";
 import { poisFromFeatures } from "./pois";
@@ -39,6 +39,8 @@ interface Me {
 export function MapScreen() {
   const focused = useIsFocused();
   const shell = useShell();
+  const pinDistance = (pin: { lat: number; lng: number }) => (meNow ? `${formatDistance(haversineMeters(meNow, pin))} away  ·  ` : "");
+  const meNow = useStore(shell.mapBridge.me);
   const allPins = useStore(shell.pins.store);
   const droppedPins = allPins.filter((pin) => pin.kind === PIN_KIND);
   const rdvPins = allPins.filter((pin) => pin.kind === RDV_KIND);
@@ -156,6 +158,10 @@ export function MapScreen() {
       }),
     [shell],
   );
+
+  useEffect(() => {
+    if (me) shell.mapBridge.setMe({ lat: me.lat, lng: me.lng });
+  }, [shell, me?.lat, me?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lastEase = useRef(0);
   const easeSpan = useRef(0);
@@ -538,7 +544,7 @@ export function MapScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text variant="headline" numberOfLines={1}>{pin.label}</Text>
-                <Text variant="caption" color={colors.muted} numberOfLines={1}>Dropped pin</Text>
+                <Text variant="caption" color={colors.muted} numberOfLines={1}>{pinDistance(pin)}Dropped pin</Text>
               </View>
             </Pressable>
           ))}
@@ -562,7 +568,7 @@ export function MapScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text variant="headline" numberOfLines={1}>{pin.label}</Text>
-                <Text variant="caption" color={colors.muted} numberOfLines={1}>RDV</Text>
+                <Text variant="caption" color={colors.muted} numberOfLines={1}>{pinDistance(pin)}RDV</Text>
               </View>
             </Pressable>
           ))}
