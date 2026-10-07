@@ -35,6 +35,8 @@ export function MapScreen() {
   const followZoom = useRef<number>(FOLLOW_CAMERA.zoom);
   const [follow, setFollow] = useState(true);
   const [view3d, setView3d] = useState(true);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [followMember, setFollowMember] = useState(false);
   const pitch = useRef<number>(FOLLOW_CAMERA.pitch);
   const [me, setMe] = useState<Me | null>(null);
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied">("unknown");
@@ -124,6 +126,20 @@ export function MapScreen() {
     (p) => p.userId !== myId && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
 
+  const selectedPosition = selected ? others.find((p) => p.userId === selected) ?? null : null;
+  const selectedInfo = selected ? lookup.get(selected) ?? null : null;
+
+  // Following someone else: the camera stays on them as they move. Dragging the map lets go.
+  useEffect(() => {
+    if (!followMember || !selectedPosition) return;
+    camera.current?.easeTo({ center: [selectedPosition.lng, selectedPosition.lat], zoom: JUMP_ZOOM, pitch: pitch.current, bearing: 0, duration: 800 });
+  }, [followMember, selectedPosition?.lat, selectedPosition?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const closeCard = () => {
+    setSelected(null);
+    setFollowMember(false);
+  };
+
   const members = useMemo(() => {
     const livePositions = new globalThis.Map(others.map((p) => [p.userId, p]));
     return [...lookup.entries()]
@@ -155,7 +171,9 @@ export function MapScreen() {
     });
   };
 
-  const jumpTo = (lat: number, lng: number) => {
+  const jumpTo = (id: string, lat: number, lng: number) => {
+    setSelected(id);
+    setFollowMember(false);
     setFollow(false);
     setExpanded(true);
     camera.current?.easeTo({ center: [lng, lat], zoom: JUMP_ZOOM, pitch: view3d ? 45 : FLAT_PITCH, bearing: 0, duration: 800 });
@@ -164,6 +182,8 @@ export function MapScreen() {
   const rehome = () => {
     followZoom.current = FOLLOW_CAMERA.zoom;
     setFollow(true);
+    setFollowMember(false);
+    setSelected(null);
     if (me) easeToMe(me, 500);
     else camera.current?.easeTo({ center: TORONTO, zoom: 11.5, pitch: 0, bearing: 0, duration: 500 });
   };
@@ -207,7 +227,10 @@ export function MapScreen() {
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
             // Dragging or pinching the map by hand ends follow mode; the home button brings it back.
-            if (event.nativeEvent.userInteraction) setFollow(false);
+            if (event.nativeEvent.userInteraction) {
+              setFollow(false);
+              setFollowMember(false);
+            }
           }}
         >
           <Camera ref={camera} initialViewState={{ center: TORONTO, zoom: 11.5 }} />
@@ -229,7 +252,7 @@ export function MapScreen() {
         <View style={styles.top} pointerEvents="box-none">
           <Pressable testID="map-show-everyone" accessibilityRole="button" accessibilityLabel="Show everyone live" onPress={showEveryone}>
             <Glass kind="control" style={styles.pill}>
-              <View style={[styles.pillDot, { backgroundColor: live > 0 ? colors.accent : colors.subtle }]} />
+              <View style={[styles.pillDot, { backgroundColor: live > 0 ? colors.accentBright : colors.subtle }]} />
               <Text variant="caption" color={live > 0 ? colors.text : colors.muted}>{live === 0 ? "No one else live" : `${live} live`}</Text>
             </Glass>
           </Pressable>
@@ -253,8 +276,29 @@ export function MapScreen() {
               <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
             </GlassButton>
             <GlassButton testID="map-recenter" label="Back to my location" onPress={rehome}>
-              <Feather name="navigation" size={19} color={follow ? colors.accent : colors.text} />
+              <Feather name="navigation" size={19} color={follow ? colors.accentBright : colors.text} />
             </GlassButton>
+          </View>
+        ) : null}
+
+        {expanded && selectedPosition && selectedInfo ? (
+          <View style={styles.card} pointerEvents="box-none">
+            <View style={styles.cardBody}>
+              <Avatar handle={selectedInfo.handle} path={selectedInfo.avatarPath} size={44} ring={crewStyle(selectedInfo.styleIndex).tint} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text variant="headline" numberOfLines={1}>@{selectedInfo.handle}</Text>
+                <View style={styles.cardMeta}>
+                  <View style={[styles.statusDot, { backgroundColor: colors.accentBright }]} />
+                  <Text variant="caption" color={colors.muted} numberOfLines={1}>Live  ·  {selectedInfo.crewNames.join(", ")}</Text>
+                </View>
+              </View>
+              <Pressable testID="map-card-follow" accessibilityRole="button" accessibilityLabel={followMember ? "Stop following" : "Follow"} onPress={() => setFollowMember((v) => !v)} style={[styles.cardButton, followMember && { backgroundColor: colors.accentSoft, borderColor: colors.accentBright }]}>
+                <Text variant="caption" bold color={followMember ? colors.accentBright : colors.text}>{followMember ? "Following" : "Follow"}</Text>
+              </Pressable>
+              <Pressable testID="map-card-close" accessibilityRole="button" accessibilityLabel="Close" onPress={closeCard} hitSlop={8}>
+                <Feather name="x" size={18} color={colors.muted} />
+              </Pressable>
+            </View>
           </View>
         ) : null}
 
@@ -279,7 +323,7 @@ export function MapScreen() {
                 <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
               </GlassButton>
               <GlassButton testID="map-recenter" label="Back to my location" size={36} onPress={rehome}>
-                <Feather name="navigation" size={16} color={follow ? colors.accent : colors.text} />
+                <Feather name="navigation" size={16} color={follow ? colors.accentBright : colors.text} />
               </GlassButton>
             </View>
           )}
@@ -310,7 +354,7 @@ export function MapScreen() {
                 onPress={() => {
                   if (!position) return;
                   Haptics.selectionAsync().catch(() => undefined);
-                  jumpTo(position.lat, position.lng);
+                  jumpTo(m.id, position.lat, position.lng);
                 }}
                 style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }, !position && { opacity: 0.55 }]}
               >
@@ -321,7 +365,7 @@ export function MapScreen() {
                 </View>
                 {position ? (
                   <View style={styles.status}>
-                    <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accent : colors.subtle }]} />
+                    <View style={[styles.statusDot, { backgroundColor: fresh ? colors.accentBright : colors.subtle }]} />
                     <Text variant="caption" color={fresh ? colors.text : colors.subtle}>{fresh ? "Live" : "Idle"}</Text>
                   </View>
                 ) : (
@@ -354,4 +398,8 @@ const styles = StyleSheet.create({
   memberDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
   status: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
+  card: { position: "absolute", left: 16, right: 76, bottom: SHEET_OVERLAP + 92 },
+  cardBody: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: radii.xl, borderCurve: "continuous", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  cardMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
+  cardButton: { paddingHorizontal: 12, height: 32, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
 });

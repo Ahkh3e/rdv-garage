@@ -37,7 +37,7 @@ export function Welcome({ navigation }: { navigation: any }) {
         <View style={{ gap: 32 }}>
           <Text variant="label" color={colors.muted} style={{ letterSpacing: 2.4 }}>RDV Garage</Text>
           <View style={{ gap: 20 }}>
-            <View style={{ width: 32, height: 1, backgroundColor: colors.accent }} />
+            <View style={{ width: 32, height: 1, backgroundColor: colors.accentBright }} />
             <Text variant="hero">Your crew,{"\n"}live.</Text>
             <Text variant="hero" color={colors.subtle}>By invitation.</Text>
           </View>

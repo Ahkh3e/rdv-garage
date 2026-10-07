@@ -278,7 +278,7 @@ function TabsScreen() {
             title: tab.title,
             tabBarIcon: ({ color, focused }) => (
               <View style={{ alignItems: "center" }}>
-                <View style={{ position: "absolute", top: -9, width: 16, height: 2, borderRadius: 1, backgroundColor: focused ? colors.accent : "transparent" }} />
+                <View style={{ position: "absolute", top: -9, width: 16, height: 2, borderRadius: 1, backgroundColor: focused ? colors.accentBright : "transparent" }} />
                 <Feather name={(TAB_ICONS[tab.id] ?? "circle") as any} size={22} color={color} />
               </View>
             ),

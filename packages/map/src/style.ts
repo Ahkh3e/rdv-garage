@@ -1,6 +1,6 @@
-// "RDV Night": a Waze-inspired night style for the shared map. Vector tiles come from OpenFreeMap (OpenStreetMap data,
-// no key needed). Deep navy ground, bright roads that get lighter as they get bigger, blue water, quiet labels.
-// The one accent colour (the person's own marker) is added by the map screen, not by the style.
+// "RDV Night": a monochrome charcoal-blue night style for the shared map. Vector tiles come from OpenFreeMap
+// (OpenStreetMap data, no key needed). Near-black ground, grey roads that get lighter as they get bigger, no colour
+// except the single blue accent, which the map screen adds for the person's own marker.
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 
 const FONT = ["Noto Sans Regular"];
@@ -8,27 +8,27 @@ const FONT_BOLD = ["Noto Sans Bold"];
 const FONT_ITALIC = ["Noto Sans Italic"];
 
 export const MAP_COLORS = {
-  ground: "#0A0E14",
-  park: "#0F2A24",
-  wood: "#0D241F",
-  residential: "#0C1218",
-  industrial: "#0B1016",
-  water: "#0C2D4F",
-  building: "#151D28",
-  buildingTop: "#1B2634",
-  casing: "#05080C",
-  minor: "#2C3848",
-  service: "#222C39",
-  tertiary: "#4A5B73",
-  secondary: "#6F83A0",
-  primary: "#B3C6DC",
-  trunk: "#DDE9F6",
-  motorway: "#FFFFFF",
-  rail: "#2A3442",
-  label: "rgba(255,255,255,0.55)",
-  labelStrong: "#E6EEF7",
-  labelWater: "#5F87B0",
-  halo: "#0A0E14",
+  ground: "#11141A",
+  park: "#151A21",
+  wood: "#141820",
+  residential: "#10131A",
+  industrial: "#0F1218",
+  water: "#0A0C11",
+  building: "#171B23",
+  buildingTop: "#1D222C",
+  casing: "#0A0C10",
+  minor: "#2A303B",
+  service: "#222833",
+  tertiary: "#3A4150",
+  secondary: "#586073",
+  primary: "#8A93A6",
+  trunk: "#B4BDCE",
+  motorway: "#E4EAF5",
+  rail: "#262C37",
+  label: "rgba(200,212,235,0.5)",
+  labelStrong: "#E6ECF7",
+  labelWater: "#4B5568",
+  halo: "#0A0C10",
 } as const;
 
 const w = (...stops: [number, number][]) => ["interpolate", ["exponential", 1.4], ["zoom"], ...stops.flat()] as never;

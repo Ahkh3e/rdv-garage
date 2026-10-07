@@ -33,7 +33,7 @@ export function Button({ title, onPress, variant = "primary", loading, disabled,
       style={({ pressed }) => [
         styles.base,
         primary && { backgroundColor: off ? colors.fill : pressed ? colors.accentPressed : colors.accent },
-        variant === "secondary" && { backgroundColor: pressed ? colors.border : colors.fill, borderColor: colors.border, borderWidth: 1 },
+        variant === "secondary" && { backgroundColor: pressed ? colors.press : "transparent", borderColor: colors.border, borderWidth: 1 },
         (variant === "ghost" || variant === "danger") && { backgroundColor: pressed ? colors.press : "transparent" },
         { transform: [{ scale: pressed && !off ? 0.98 : 1 }] },
         style,
