@@ -3,6 +3,7 @@ import { PROBE_SCHEMES, appsFor, directionsUrl, planHandoff, webFallbackUrl, typ
 
 export interface HandoffDeps {
   os: OS;
+  ready(): Promise<void>;
   getPreferred(): MapsApp | null;
   setPreferred(app: MapsApp): void;
   canOpen(url: string): Promise<boolean>;
@@ -28,6 +29,7 @@ export async function detectInstalled(os: OS, canOpen: (url: string) => Promise<
 export function createHandoff(deps: HandoffDeps): Handoff {
   return {
     async openDirections(target: DirectionsTarget) {
+      await deps.ready();
       const preferred = deps.getPreferred();
       const installed = await detectInstalled(deps.os, deps.canOpen);
       const plan = planHandoff(deps.os, preferred, installed);
@@ -35,8 +37,8 @@ export function createHandoff(deps: HandoffDeps): Handoff {
       if (plan.kind === "web") return deps.open(webFallbackUrl(target));
       const picked = await deps.choose({ missing: plan.missing, options: plan.options });
       if (!picked) return;
-      await deps.open(directionsUrl(picked, target));
       if (await deps.confirmRemember(picked)) deps.setPreferred(picked);
+      await deps.open(directionsUrl(picked, target));
     },
   };
 }

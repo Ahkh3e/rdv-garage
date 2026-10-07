@@ -10,17 +10,25 @@ export const PREF_KEY = "rdv.maps.app";
 
 export interface MapsPrefs {
   store: Store<MapsApp | null>;
+  readonly ready: Promise<void>;
   load(): Promise<void>;
   set(app: MapsApp): void;
 }
 
 export function createMapsPrefs(kv: KV): MapsPrefs {
   const store = createStore<MapsApp | null>(null);
+  let ready: Promise<void> = Promise.resolve();
   return {
     store,
-    async load() {
-      const raw = await kv.get(PREF_KEY).catch(() => null);
-      if (isMapsApp(raw)) store.set(raw);
+    get ready() {
+      return ready;
+    },
+    load() {
+      ready = (async () => {
+        const raw = await kv.get(PREF_KEY).catch(() => null);
+        if (isMapsApp(raw)) store.set(raw);
+      })();
+      return ready;
     },
     set(app) {
       store.set(app);

@@ -48,6 +48,7 @@ const deps = (over: Partial<HandoffDeps> = {}) => {
   const saved: string[] = [];
   const d: HandoffDeps = {
     os: "ios",
+    ready: async () => undefined,
     getPreferred: () => null,
     setPreferred: (a) => void saved.push(a),
     canOpen: async (url) => url === "waze://",
@@ -85,6 +86,31 @@ describe("openDirections", () => {
     await createHandoff(d).openDirections(target);
     expect(opened).toEqual([directionsUrl("apple", target)]);
     expect(saved).toEqual(["apple"]);
+  });
+  it("asks and stores the preference before opening the app", async () => {
+    const log: string[] = [];
+    const { d } = deps({
+      canOpen: async () => false,
+      choose: async () => "apple",
+      confirmRemember: async () => (log.push("ask"), true),
+      setPreferred: () => void log.push("save"),
+      open: async () => void log.push("open"),
+    });
+    await createHandoff(d).openDirections(target);
+    expect(log).toEqual(["ask", "save", "open"]);
+  });
+  it("waits for stored preferences before reading the choice", async () => {
+    const data = new Map<string, string>([["rdv.maps.app", "google"]]);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const prefs = createMapsPrefs({ get: async (k) => (await gate, data.get(k) ?? null), set: async () => undefined });
+    const opened: string[] = [];
+    const { d } = deps({ ready: () => prefs.ready, getPreferred: () => prefs.store.get(), canOpen: async () => true, open: async (u) => void opened.push(u) });
+    void prefs.load();
+    const run = createHandoff(d).openDirections(target);
+    release();
+    await run;
+    expect(opened).toEqual([directionsUrl("google", target)]);
   });
   it("does not remember when declined and does nothing on cancel", async () => {
     const a = deps({ canOpen: async () => false, choose: async () => "apple" });
