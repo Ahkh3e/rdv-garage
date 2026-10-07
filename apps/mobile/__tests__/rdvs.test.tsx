@@ -363,6 +363,16 @@ describe("reminders", () => {
   });
 });
 
+describe("Map list", () => {
+  it("opens an RDV once when its row in the crew sheet is pressed", async () => {
+    const { shell } = await mount(backend(() => [rdvRow()]));
+    const press = jest.spyOn(shell.pins, "press");
+    await fireEvent.press(await screen.findByTestId("map-rdv-rdvs:r1"));
+    expect(press).toHaveBeenCalledTimes(1);
+    expect(press).toHaveBeenCalledWith("rdvs:r1");
+  });
+});
+
 describe("Crew detail RDVs", () => {
   it("lists the crew's upcoming RDVs and opens one", async () => {
     const { shell } = await mount(backend(() => [rdvRow(), rdvRow({ id: "elsewhere", title: "Other crew", crew_ids: ["crew-9"] }), rdvRow({ id: "old", title: "Old meet", starts_at: iso(Date.now() - 30 * H), end_at: iso(Date.now() - 27 * H) })]));

@@ -134,15 +134,22 @@ export function MapScreen() {
   // looking. A far move levels the camera, jumps, then restores the pitch.
   const moveCamera = (point: { lat: number; lng: number }, zoomTo: number, duration: number) => {
     const target = { center: [point.lng, point.lat] as [number, number], zoom: zoomTo };
-    if (center.current && haversineMeters(center.current, point) <= NEAR_DISTANCE_M) {
+    const near = center.current !== null && haversineMeters(center.current, point) <= NEAR_DISTANCE_M;
+    if (near) {
       camera.current?.easeTo({ ...target, pitch: pitch.current, bearing: 0, duration });
       return;
     }
     const restore = pitch.current;
-    Promise.resolve(camera.current?.setStop({ pitch: 0, duration: 0 }))
-      .then(() => camera.current?.jumpTo(target))
-      .then(() => camera.current?.easeTo({ pitch: restore, duration: 500 } as never))
-      .catch(() => undefined);
+    void (async () => {
+      try {
+        await camera.current?.setStop({ pitch: 0, duration: 0 });
+        camera.current?.jumpTo({ ...target, pitch: 0, bearing: 0 });
+      } catch (error) {
+        console.warn("map camera jump failed", error);
+      } finally {
+        camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration: 500 });
+      }
+    })();
   };
 
   useEffect(
@@ -527,7 +534,6 @@ export function MapScreen() {
                 Haptics.selectionAsync().catch(() => undefined);
                 shell.mapBridge.flyTo({ lat: pin.lat, lng: pin.lng });
                 shell.pins.press(pin.id);
-                shell.pins.press(pin.id);
               }}
               style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }]}
             >
@@ -550,7 +556,6 @@ export function MapScreen() {
               onPress={() => {
                 Haptics.selectionAsync().catch(() => undefined);
                 shell.mapBridge.flyTo({ lat: pin.lat, lng: pin.lng });
-                shell.pins.press(pin.id);
                 shell.pins.press(pin.id);
               }}
               style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }]}
