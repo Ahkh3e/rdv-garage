@@ -39,7 +39,7 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
       endSession: async (sessionId) => void (await shell.backend.rpc("live", "end_session", { p_session: sessionId })),
       broadcast: (crewId, event, payload) => hub.send(crewId, event, payload),
       publishSelf: (position) => {
-        if (position) shell.locationStream.publish({ userId, crewIds: position.crewIds, lat: position.lat, lng: position.lng, heading: position.heading, ts: position.ts });
+        if (position) shell.locationStream.publish({ userId, crewIds: position.crewIds, lat: position.lat, lng: position.lng, heading: position.heading, ts: position.ts, accuracyM: position.accuracyM });
         else shell.locationStream.remove(userId);
       },
       onError: (error) => console.warn("live session error", error),

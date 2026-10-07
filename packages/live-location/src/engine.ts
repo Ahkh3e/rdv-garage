@@ -18,7 +18,7 @@ export interface EngineDeps {
   checkpoint(sessionId: string, maxSpeedKmh: number | null, distanceM: number | null, weekStart?: string): Promise<string>;
   endSession(sessionId: string): Promise<void>;
   broadcast(crewId: string, event: "pos" | "stop", payload: Record<string, unknown>): void;
-  publishSelf(position: { lat: number; lng: number; heading: number | null; ts: number; crewIds: string[] } | null): void;
+  publishSelf(position: { lat: number; lng: number; heading: number | null; ts: number; crewIds: string[]; accuracyM?: number | null } | null): void;
   onError?(error: unknown): void;
 }
 
@@ -110,7 +110,7 @@ export class LiveEngine {
     }
     this.lastFix = fix;
 
-    this.deps.publishSelf({ lat: fix.lat, lng: fix.lng, heading: fix.heading, ts: fix.ts, crewIds: this.crewIds });
+    this.deps.publishSelf({ lat: fix.lat, lng: fix.lng, heading: fix.heading, ts: fix.ts, crewIds: this.crewIds, accuracyM: fix.accuracy });
 
     const interval = this.moving ? MOVING_BROADCAST_MS : STATIONARY_BROADCAST_MS;
     if (fix.ts - this.lastBroadcast >= interval || (this.moving && fix.ts - this.lastBroadcast >= CORNER_MIN_MS && this.turned(fix))) {
@@ -156,7 +156,7 @@ export class LiveEngine {
     for (const crewId of this.crewIds) {
       this.deps.broadcast(crewId, "pos", this.payload(f, now, true));
     }
-    this.deps.publishSelf({ lat: f.lat, lng: f.lng, heading: f.heading, ts: now, crewIds: this.crewIds });
+    this.deps.publishSelf({ lat: f.lat, lng: f.lng, heading: f.heading, ts: now, crewIds: this.crewIds, accuracyM: f.accuracy });
   }
 
   // Stop sharing with crews the person is no longer in. Returns the crews that remain.

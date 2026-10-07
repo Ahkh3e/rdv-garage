@@ -60,7 +60,7 @@ export function RdvForm({ navigation, route }: { navigation: any; route: { param
 
   const pickPlace = async () => {
     const place = await shell.places.pick();
-    if (place) set({ place });
+    if (place) set({ place, areaName: null });
   };
 
   const days = dayOptions(now);

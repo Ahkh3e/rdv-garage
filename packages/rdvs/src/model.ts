@@ -157,12 +157,15 @@ export const placeOfRdv = (rdv: Rdv): Place | null =>
 
 // Whether the device should make the one record_arrival call for a live member: live to a crew the RDV is for, inside the
 // radius, inside the window, and not already arrived.
-export function shouldReportArrival(rdv: Rdv, position: Pick<MemberPosition, "lat" | "lng" | "crewIds" | "ts">, now: number): boolean {
+// The reading must be clearly inside: its distance plus the fix's accuracy (at least a small margin) within the radius.
+export const ARRIVAL_MARGIN_M = 10;
+
+export function shouldReportArrival(rdv: Rdv, position: Pick<MemberPosition, "lat" | "lng" | "crewIds" | "ts" | "accuracyM">, now: number): boolean {
   if (rdv.status !== "scheduled" || !rdv.place || rdv.arrived) return false;
   if (!inAttendanceWindow(rdv, now)) return false;
   if (now - position.ts > FRESH_FIX_MS) return false;
   if (!position.crewIds.some((id) => rdv.crewIds.includes(id))) return false;
-  return insideRadius(position, rdv.place, rdv.radiusM);
+  return insideRadius(position, rdv.place, rdv.radiusM - Math.max(ARRIVAL_MARGIN_M, position.accuracyM ?? 0));
 }
 
 export interface Reminder {

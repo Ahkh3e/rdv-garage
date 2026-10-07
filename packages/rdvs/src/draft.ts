@@ -5,6 +5,7 @@ export interface Draft {
   title: string;
   kind: RdvKind;
   place: Place | null;
+  areaName: string | null;
   startsAt: number | null;
   durationMin: number | null;
   note: string;
@@ -23,6 +24,7 @@ export const emptyDraft = (place: Place | null, crewIds: string[], now: number):
   title: "",
   kind: "meet",
   place,
+  areaName: null,
   startsAt: defaultStart(now),
   durationMin: null,
   note: "",
@@ -34,6 +36,7 @@ export const draftFromRdv = (rdv: Rdv): Draft => ({
   title: rdv.title,
   kind: rdv.kind,
   place: rdv.place ? { name: rdv.place.name, kind: "RDV", address: null, lat: rdv.place.lat, lng: rdv.place.lng } : null,
+  areaName: rdv.areaName,
   startsAt: rdv.startsAt,
   durationMin: rdv.endsAt ? Math.round((rdv.endsAt - rdv.startsAt) / 60000) : null,
   note: rdv.note ?? "",
@@ -73,11 +76,10 @@ export function withDay(ms: number, dayStart: number): number {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate(), time.getHours(), time.getMinutes()).getTime();
 }
 
-// Moves the time of day by steps, wrapping within the same day.
+// Moves the whole timestamp by steps, so stepping past midnight changes the day.
 export function withTimeShift(ms: number, deltaMin: number): number {
   const d = new Date(ms);
-  const total = (((d.getHours() * 60 + d.getMinutes() + deltaMin) % 1440) + 1440) % 1440;
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(total / 60), total % 60).getTime();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes() + deltaMin).getTime();
 }
 
 export const stepRadius = (radius: number, direction: 1 | -1): number => Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, radius + direction * RADIUS_STEP));
@@ -126,7 +128,7 @@ export function toArgs(draft: Draft): Record<string, unknown> {
     p_place_name: draft.place!.name.trim().slice(0, 80) || "Meet point",
     p_lat: draft.place!.lat,
     p_lng: draft.place!.lng,
-    p_area_name: areaName(draft.place!),
+    p_area_name: draft.areaName ?? areaName(draft.place!),
     p_starts_at: new Date(draft.startsAt!).toISOString(),
     p_ends_at: end === null ? null : new Date(end).toISOString(),
     p_note: draft.note.trim() || null,

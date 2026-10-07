@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayOptions, defaultStart, draftError, emptyDraft, endOf, minutesOfDay, startOfDay, stepDuration, stepRadius, toArgs, withDay, withTimeShift, type Draft } from "./draft";
+import { dayOptions, defaultStart, draftError, draftFromRdv, emptyDraft, endOf, minutesOfDay, startOfDay, stepDuration, stepRadius, toArgs, withDay, withTimeShift, type Draft } from "./draft";
 import { formatDay, formatDuration, formatTime, formatWhen } from "./format";
 import {
   areaName, attendanceWindow, canAnswer, canCancel, canEdit, canMarkHere, diffReminders, effectiveEnd, inAttendanceWindow, insideRadius, isHappening,
@@ -58,6 +58,7 @@ describe("radius", () => {
 describe("arrival rules", () => {
   const at = { lat: 43.65, lng: -79.38, crewIds: ["c1"], ts: NOW };
   const open = rdv({ startsAt: NOW - 10 * 60000, endAt: NOW + 2 * H });
+  const edge = (m: number) => ({ ...at, lat: 43.65 + m / 111195 });
 
   it("lets the device report a live member inside the radius during the window", () => {
     expect(shouldReportArrival(open, at, NOW)).toBe(true);
@@ -71,6 +72,13 @@ describe("arrival rules", () => {
     expect(shouldReportArrival({ ...open, arrived: true }, at, NOW)).toBe(false);
     expect(shouldReportArrival({ ...open, status: "cancelled" }, at, NOW)).toBe(false);
     expect(shouldReportArrival({ ...open, place: null }, at, NOW)).toBe(false);
+  });
+
+  it("needs the reading to be clearly inside: the fix's accuracy counts against the radius", () => {
+    expect(shouldReportArrival(open, edge(100), NOW)).toBe(true);
+    expect(shouldReportArrival(open, edge(145), NOW)).toBe(false);
+    expect(shouldReportArrival(open, { ...edge(100), accuracyM: 30 }, NOW)).toBe(true);
+    expect(shouldReportArrival(open, { ...edge(100), accuracyM: 80 }, NOW)).toBe(false);
   });
 
   it("needs the member to be live to a crew the RDV is for and the reading to be fresh", () => {
@@ -269,11 +277,20 @@ describe("draft helpers", () => {
     expect(moved).toBe(new Date(2026, 5, 12, 19, 30).getTime());
   });
 
-  it("shifts the time of day within the day and wraps", () => {
-    const t = new Date(2026, 5, 10, 23, 45).getTime();
-    expect(minutesOfDay(withTimeShift(t, 15))).toBe(0);
-    expect(new Date(withTimeShift(t, 15)).getDate()).toBe(10);
-    expect(minutesOfDay(withTimeShift(new Date(2026, 5, 10, 0, 0).getTime(), -15))).toBe(23 * 60 + 45);
+  it("shifts the whole timestamp, so stepping past midnight changes the day", () => {
+    const late = new Date(2026, 5, 10, 23, 45).getTime();
+    expect(withTimeShift(late, 15)).toBe(new Date(2026, 5, 11, 0, 0).getTime());
+    const early = new Date(2026, 5, 10, 0, 0).getTime();
+    expect(withTimeShift(early, -15)).toBe(new Date(2026, 5, 9, 23, 45).getTime());
+    expect(withTimeShift(early, 15)).toBe(new Date(2026, 5, 10, 0, 15).getTime());
+  });
+
+  it("keeps the RDV's own area name when editing, and works it out again when the place changes", () => {
+    const hidden = rdv({ kind: "private_event", areaName: "Leslieville" });
+    const edited = { ...draftFromRdv(hidden), note: "bring a chair" };
+    expect(toArgs(edited).p_area_name).toBe("Leslieville");
+    const moved = { ...edited, areaName: null, place: { name: "Lot", kind: "x", address: "1 King St, Oakville, ON", lat: 43.4, lng: -79.7 } };
+    expect(toArgs(moved).p_area_name).toBe("Oakville");
   });
 
   it("steps radius within 50 to 500 and duration from none to a day", () => {

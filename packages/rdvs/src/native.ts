@@ -15,15 +15,16 @@ export async function readPosition(): Promise<GeoPoint> {
 
 // Local reminders only. Permission is the one already asked at the first Go live; nothing is asked here.
 export const reminders: ReminderStore = {
+  async permitted() {
+    return (await Notifications.getPermissionsAsync()).granted;
+  },
   async list() {
-    if (!(await Notifications.getPermissionsAsync()).granted) return [];
     const all = await Notifications.getAllScheduledNotificationsAsync();
     return all
       .filter((n) => n.identifier.startsWith("rdv-") && n.content.data?.rdvReminder === true)
       .map((n) => ({ key: n.identifier, at: Number(n.content.data?.at), title: n.content.title ?? undefined, body: n.content.body ?? undefined }));
   },
   async schedule(reminder) {
-    if (!(await Notifications.getPermissionsAsync()).granted) return;
     await Notifications.scheduleNotificationAsync({
       identifier: reminder.key,
       content: { title: reminder.title, body: reminder.body, data: { rdvReminder: true, at: reminder.at } },

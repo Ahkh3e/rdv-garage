@@ -14,7 +14,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   radius_m: 150, note: null, status: "scheduled", crew_ids: ["c1"], place: { name: "Harbour lot", lat: 43.65, lng: -79.38 }, going: 1, maybe: 0, cant: 0, my_answer: null, arrived: false, ...over,
 });
 
-function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: unknown) => unknown } = {}) {
+function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: unknown) => unknown; permitted?: boolean } = {}) {
   const rpc = vi.fn(async (_schema: string, name: string, _args?: unknown) => {
     if (name === "list_rdvs") return rows;
     if (name === "create_rdv") return "new";
@@ -31,7 +31,9 @@ function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: 
   const navigate = vi.fn();
   const openDirections = vi.fn(async () => undefined);
   const scheduled = new Map<string, { key: string; at: number; title?: string; body?: string }>();
+  const permitted = vi.fn(async () => over.permitted ?? true);
   const reminders: ReminderStore = {
+    permitted,
     list: async () => [...scheduled.values()],
     schedule: async (r) => void scheduled.set(r.key, r),
     cancel: async (key) => void scheduled.delete(key),
@@ -47,7 +49,7 @@ function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: 
     handoff: { openDirections },
   };
   const controller = createRdvsController(shell, { reminders, readPosition, now: () => now });
-  return { shell, controller, rpc, invoke, crewStore, positions, navigate, openDirections, scheduled, readPosition, setNow: (n: number) => (now = n) };
+  return { shell, controller, rpc, invoke, crewStore, positions, navigate, openDirections, scheduled, readPosition, permitted, setNow: (n: number) => (now = n) };
 }
 
 const here = (over: Partial<MemberPosition> = {}): Record<string, MemberPosition> => ({
@@ -191,6 +193,34 @@ describe("arrival", () => {
     expect(closed.invoke).toHaveBeenCalledTimes(1);
   });
 
+  it("gives up live detection for an RDV after three attempts, backing off between them", async () => {
+    const s = setup([row()], { invoke: () => { throw new AppError("outside_radius"); } });
+    await s.controller.refresh();
+    const at = (ms: number) => { s.setNow(NOW + ms); s.positions.set(here({ ts: NOW + ms })); return tick(); };
+    await at(0);
+    await at(61000);
+    await at(100000);
+    expect(s.invoke).toHaveBeenCalledTimes(2);
+    await at(61000 + 121000);
+    expect(s.invoke).toHaveBeenCalledTimes(3);
+    await at(61000 + 121000 + 500000);
+    expect(s.invoke).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops live detection when rate limited, and I'm here still works", async () => {
+    const s = setup([row(), row({ id: "r2" })], { invoke: (_n, body) => { if ((body as { method: string }).method === "live") throw new AppError("rate_limited"); return { recorded: true }; } });
+    await s.controller.refresh();
+    s.positions.set(here());
+    await tick();
+    expect(s.invoke).toHaveBeenCalledTimes(2);
+    s.setNow(NOW + 600000);
+    s.positions.set(here({ ts: NOW + 600000 }));
+    await tick();
+    expect(s.invoke).toHaveBeenCalledTimes(2);
+    await s.controller.markHere("r1");
+    expect(s.invoke).toHaveBeenCalledTimes(3);
+  });
+
   it("retries after a network error at the retry interval", async () => {
     const flaky = setup([row()], { invoke: () => { throw new AppError("network"); } });
     await flaky.controller.refresh();
@@ -238,6 +268,30 @@ describe("reminders", () => {
     await controller.refresh();
     await tick();
     expect([...scheduled.keys()]).toEqual([]);
+  });
+
+  it("checks the permission once per sync and skips a sync when nothing changed", async () => {
+    const future = { starts_at: iso(NOW + 5 * H), end_at: iso(NOW + 8 * H), my_answer: "going" };
+    const { controller, permitted, scheduled } = setup([row(future)]);
+    await controller.refresh();
+    await tick();
+    expect(permitted).toHaveBeenCalledTimes(1);
+    expect(scheduled.size).toBe(1);
+    await controller.refresh();
+    await controller.refresh();
+    await tick();
+    expect(permitted).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules nothing and does not ask again every cycle when notifications are not permitted", async () => {
+    const future = { starts_at: iso(NOW + 5 * H), end_at: iso(NOW + 8 * H), my_answer: "going" };
+    const { controller, permitted, scheduled } = setup([row(future)], { permitted: false });
+    await controller.refresh();
+    await controller.refresh();
+    await controller.refresh();
+    await tick();
+    expect(scheduled.size).toBe(0);
+    expect(permitted).toHaveBeenCalledTimes(1);
   });
 
   it("keeps reminders while crews have not loaded, and clears them once crews load empty or the person signs out", async () => {

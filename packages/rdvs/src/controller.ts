@@ -27,6 +27,7 @@ export interface RdvsState {
 }
 
 export interface ReminderStore {
+  permitted(): Promise<boolean>;
   list(): Promise<{ key: string; at: number; title?: string; body?: string }[]>;
   schedule(reminder: Reminder): Promise<void>;
   cancel(key: string): Promise<void>;
@@ -39,7 +40,8 @@ export const DETAIL_ROUTE = "RdvDetail";
 export const EDIT_ROUTE = "RdvEdit";
 export const PLANS_ROUTE = "Plans";
 export const STATS_ROUTE = "Stats";
-const RETRY_AFTER_ERROR_MS = 60000;
+export const RETRY_AFTER_ERROR_MS = 60000;
+export const MAX_LIVE_ATTEMPTS = 3;
 const FINAL_CODES = new Set(["rdv_closed", "rdv_not_found"]);
 
 export function createRdvsController(
@@ -49,7 +51,10 @@ export function createRdvsController(
   const now = deps.now ?? Date.now;
   const state = createStore<RdvsState>({ rdvs: [], loaded: false });
   const mapPins = createStore<MapPin[]>([]);
-  const reported = new Map<string, number>();
+  const attempts = new Map<string, { n: number; at: number }>();
+  const settled = new Set<string>();
+  let limited = false;
+  let lastSynced: string | null = null;
   let syncing: Promise<void> = Promise.resolve();
 
   const userId = () => {
@@ -68,25 +73,32 @@ export function createRdvsController(
 
   const syncReminders = () => {
     const wanted = remindersFor(state.get().rdvs, now(), formatTime);
+    const key = JSON.stringify(wanted);
+    if (key === lastSynced) return syncing;
+    lastSynced = key;
     syncing = syncing
       .then(async () => {
+        if (!(await deps.reminders.permitted())) return;
         const { add, remove } = diffReminders(wanted, await deps.reminders.list());
         for (const key of remove) await deps.reminders.cancel(key);
         for (const reminder of add) await deps.reminders.schedule(reminder);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        lastSynced = null;
+      });
     return syncing;
   };
 
   const check = () => {
     const id = userId();
-    if (!id) return;
+    if (!id || limited) return;
     const position = shell.locationStream.store.get()[id];
     if (!position) return;
     const t = now();
     for (const rdv of state.get().rdvs) {
-      const last = reported.get(rdv.id);
-      if (last === -1 || (last !== undefined && t - last < RETRY_AFTER_ERROR_MS)) continue;
+      if (settled.has(rdv.id)) continue;
+      const tried = attempts.get(rdv.id);
+      if (tried && (tried.n >= MAX_LIVE_ATTEMPTS || t - tried.at < RETRY_AFTER_ERROR_MS * 2 ** (tried.n - 1))) continue;
       if (shouldReportArrival(rdv, position, t)) void controller.report(rdv.id, position);
     }
   };
@@ -139,7 +151,9 @@ export function createRdvsController(
     },
 
     reset() {
-      reported.clear();
+      attempts.clear();
+      settled.clear();
+      limited = false;
       state.set({ rdvs: [], loaded: false });
       mapPins.set([]);
       void syncReminders();
@@ -183,13 +197,15 @@ export function createRdvsController(
 
     // A live member's arrival: the one reading that put them inside the radius is sent, and the server checks it.
     async report(id: string, position: GeoPoint) {
-      reported.set(id, now());
+      attempts.set(id, { n: (attempts.get(id)?.n ?? 0) + 1, at: now() });
       try {
         await shell.backend.invoke("record_arrival", { rdv_id: id, position: { lat: position.lat, lng: position.lng }, method: "live" });
-        reported.set(id, -1);
+        settled.add(id);
         await controller.refresh();
       } catch (error) {
-        if (FINAL_CODES.has(codeOf(error))) reported.set(id, -1);
+        const code = codeOf(error);
+        if (FINAL_CODES.has(code)) settled.add(id);
+        else if (code === "rate_limited") limited = true;
       }
     },
 

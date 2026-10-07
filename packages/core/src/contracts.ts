@@ -106,6 +106,8 @@ export interface MemberPosition {
   ts: number;
   // Current speed in km/h, only when that person has chosen to show it to the crew (decision 0022). Never stored.
   speedKmh?: number | null;
+  // Horizontal accuracy of the fix in metres, on the device's own position only.
+  accuracyM?: number | null;
 }
 
 export interface LocationStream {
