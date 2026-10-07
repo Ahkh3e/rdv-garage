@@ -16,6 +16,7 @@ import { AppError } from "./errors";
 import { createEvents } from "./events";
 import { parseLink } from "./links";
 import { createStore, useStore, type Store } from "./store";
+import { DEFAULT_CAR_ICON } from "./carIcons";
 import { colors, fonts } from "./theme";
 import { Spinner } from "./ui/Bits";
 import { Glass, GlassButton } from "./ui/Glass";
@@ -174,7 +175,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
 
   async function loadProfile(userId: string): Promise<void> {
     try {
-      const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; status: string }[]>("accounts", "my_profile");
+      const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; car_icon?: string; status: string }[]>("accounts", "my_profile");
       const row = rows[0];
       if (!row || row.status === "deleted") {
         await backend.auth.signOut();
@@ -183,7 +184,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
         await backend.auth.signOut();
         session.set({ status: "signedOut", notice: "suspended" });
       } else {
-        session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path } });
+        session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path, carIcon: row.car_icon ?? DEFAULT_CAR_ICON } });
       }
     } catch (error) {
       if (error instanceof AppError && (error.code === "network" || error.code === "unknown_error")) {

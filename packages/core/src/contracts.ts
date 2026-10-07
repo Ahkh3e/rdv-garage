@@ -9,6 +9,7 @@ export interface Profile {
   id: string;
   handle: string;
   avatarPath: string | null;
+  carIcon: string;
 }
 
 export type SessionState =
@@ -65,6 +66,7 @@ export interface CrewMember {
   userId: string;
   handle: string;
   avatarPath: string | null;
+  carIcon: string;
   role: "owner" | "member";
   live: boolean;
 }
@@ -102,6 +104,8 @@ export interface MemberPosition {
   lng: number;
   heading: number | null;
   ts: number;
+  // Current speed in km/h, only when that person has chosen to show it to the crew (decision 0022). Never stored.
+  speedKmh?: number | null;
 }
 
 export interface LocationStream {

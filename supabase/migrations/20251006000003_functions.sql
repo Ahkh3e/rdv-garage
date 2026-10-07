@@ -36,7 +36,7 @@ language sql stable security definer set search_path = ''
 as $$ select not exists (select 1 from accounts.profiles where handle = p_handle) $$;
 
 create function accounts.my_profile() returns table (
-  id uuid, handle text, avatar_path text, status text, terms_version text, created_at timestamptz
+  id uuid, handle text, avatar_path text, car_icon text, status text, terms_version text, created_at timestamptz
 )
 language plpgsql stable security definer set search_path = ''
 as $$
@@ -44,11 +44,11 @@ declare uid uuid := auth.uid();
 begin
   if uid is null then perform private.fail('unauthenticated'); end if;
   return query
-    select p.id, p.handle, p.avatar_path, p.status, p.terms_version, p.created_at
+    select p.id, p.handle, p.avatar_path, p.car_icon, p.status, p.terms_version, p.created_at
     from accounts.profiles p where p.id = uid;
 end $$;
 
-create function accounts.update_profile(p_handle text default null, p_avatar_path text default null, p_clear_avatar boolean default false)
+create function accounts.update_profile(p_handle text default null, p_avatar_path text default null, p_clear_avatar boolean default false, p_car_icon text default null)
 returns void
 language plpgsql security definer set search_path = ''
 as $$
@@ -78,6 +78,12 @@ begin
       perform private.fail('not_a_member');
     end if;
     update accounts.profiles set avatar_path = p_avatar_path where id = uid;
+  end if;
+  if p_car_icon is not null then
+    if p_car_icon not in ('gt','formula','proto','rally','muscle','hyper','drift','kart') then
+      perform private.fail('icon_invalid');
+    end if;
+    update accounts.profiles set car_icon = p_car_icon where id = uid;
   end if;
 end $$;
 
@@ -398,6 +404,7 @@ begin
               'user_id', p.id,
               'handle', p.handle,
               'avatar_path', p.avatar_path,
+              'car_icon', p.car_icon,
               'role', m.role,
               'live', exists (
                 select 1 from live.sessions ls

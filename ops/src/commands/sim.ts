@@ -117,7 +117,7 @@ export async function simLive(ctx: Ctx, opts: SimLiveOptions): Promise<SimLiveRe
       if (d.last) d.distanceM += haversineMeters(d.last, step);
       d.last = { lat: step.lat, lng: step.lng };
       d.maxKmh = Math.max(d.maxKmh, step.speedKmh);
-      await d.channel.send({ type: "broadcast", event: "pos", payload: { user_id: d.profile.id, lat: step.lat, lng: step.lng, heading: step.heading, ts: now } });
+      await d.channel.send({ type: "broadcast", event: "pos", payload: { user_id: d.profile.id, lat: step.lat, lng: step.lng, heading: step.heading, speed_kmh: Math.round(step.speedKmh), ts: now } });
       d.sent++;
       if (doCheckpoint) {
         await d.client.schema("live").rpc("checkpoint_session", { p_session: d.sessionId, p_max_speed_kmh: d.maxKmh, p_distance_m: d.distanceM });

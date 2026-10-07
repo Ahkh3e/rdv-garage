@@ -217,7 +217,8 @@ describe("app backend: crews, avatars, live", () => {
     await sleep(1500);
     expect(Object.keys(watcherPositions.get())).toContain(db.userId());
     expect(watcherPositions.get()[db.userId()!]).toMatchObject({ lat: 43.65, lng: -79.38, heading: 80 });
-    expect(JSON.stringify(watcherPositions.get())).not.toMatch(/speed/i);
+    // The driver did not choose to show their speed, so no speed reaches the crew (decision 0022).
+    expect(watcherPositions.get()[db.userId()!]!.speedKmh ?? null).toBeNull();
 
     await engine.stop();
     await sleep(1500);

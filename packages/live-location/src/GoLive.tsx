@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Button, Chip, Disclaimer, Glass, PulseDot, Sheet, Text, colors, crewStyle, messageFor, radii, useCrewState, useLiveState, useShell } from "@rdv/core";
+import { Button, Chip, Disclaimer, Glass, PulseDot, Sheet, Text, Toggle, colors, crewStyle, messageFor, radii, useCrewState, useLiveState, useShell } from "@rdv/core";
 import type { LiveController } from "./controller";
 import { openSettings } from "./permissions";
 
@@ -15,6 +15,7 @@ export function GoLiveControl() {
   const live = useLiveState();
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
+  const [shareSpeed, setShareSpeed] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsSettings, setNeedsSettings] = useState(false);
@@ -32,7 +33,7 @@ export function GoLiveControl() {
     setBusy(true);
     setError(null);
     try {
-      const result = await controller!.goLive(picked);
+      const result = await controller!.goLive(picked, { shareSpeed });
       if (result === "ok") {
         setOpen(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
@@ -100,6 +101,13 @@ export function GoLiveControl() {
             );
           })}
         </View>
+        <View style={styles.speedRow}>
+          <View style={{ flex: 1 }}>
+            <Text variant="headline">Show my speed to the crew</Text>
+            <Text variant="caption" muted>Members you picked see your speed in the crew list while you are live.</Text>
+          </View>
+          <Toggle accessibilityLabel="Show my speed to the crew" value={shareSpeed} onChange={setShareSpeed} />
+        </View>
         <Disclaimer />
         {error ? <Text color={colors.danger}>{error}</Text> : null}
         {needsSettings ? <Button title="Open settings" variant="secondary" onPress={openSettings} /> : null}
@@ -114,5 +122,6 @@ const styles = StyleSheet.create({
   cta: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.accent, paddingHorizontal: 28, minHeight: 56, minWidth: 168, justifyContent: "center", borderRadius: radii.pill, shadowColor: "#000", shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
   livePill: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "stretch", borderRadius: radii.md, paddingVertical: 10, paddingLeft: 12, paddingRight: 8 },
   crewRow: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 56, paddingHorizontal: 14, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.fill },
+  speedRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.fill },
   box: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
 });

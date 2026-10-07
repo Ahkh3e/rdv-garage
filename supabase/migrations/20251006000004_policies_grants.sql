@@ -57,7 +57,7 @@ create policy segments_read on live.segments for select to authenticated
 revoke all on all tables in schema accounts, referral, crews, live, leaderboard from public, anon, authenticated;
 grant usage on schema accounts, referral, crews, live, leaderboard to anon, authenticated, service_role;
 
-grant select (id, handle, avatar_path, status, created_at) on accounts.profiles to authenticated;
+grant select (id, handle, avatar_path, car_icon, status, created_at) on accounts.profiles to authenticated;
 grant select (id, inviter_id, created_at, expires_at, status) on referral.invites to authenticated;
 grant select (id, name, description, avatar_path, owner_id, status, created_at) on crews.crews to authenticated;
 grant select on crews.members, crews.selections to authenticated;
@@ -71,7 +71,7 @@ revoke execute on all functions in schema accounts, referral, crews, live, leade
 
 -- Signed-in users
 grant execute on function
-  accounts.my_profile(), accounts.update_profile(text, text, boolean),
+  accounts.my_profile(), accounts.update_profile(text, text, boolean, text),
   accounts.list_sessions(), accounts.revoke_session(uuid), accounts.revoke_other_sessions(),
   referral.create_invite(), referral.revoke_invite(uuid), referral.list_my_invites(),
   crews.create_crew(text, text, text), crews.join_crew(text), crews.leave_crew(uuid),
