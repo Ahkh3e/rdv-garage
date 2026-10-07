@@ -85,7 +85,7 @@ export function RdvDetail({ navigation, route }: { navigation: any; route: { par
           </>
         )}
         <Text variant="label" muted>Host</Text>
-        <Text variant="body">{rdv.hostHandle ? `@${rdv.hostHandle}` : "Former member"}</Text>
+        <Text variant="body" testID="rdv-host">{rdv.hostHandle ? `@${rdv.hostHandle}` : "Former member"}</Text>
         {rdv.note ? (
           <>
             <Text variant="label" muted>Note</Text>

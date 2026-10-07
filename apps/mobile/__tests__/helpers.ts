@@ -70,8 +70,9 @@ export function makeBackend(initialUser: string | null, handlers: Record<string,
   return fake;
 }
 
-export function makeShell(backend: Backend) {
-  const shell = createShell(config, backend);
+// The rdvs module is off unless a test asks for it, so other suites keep their own routes and slots.
+export function makeShell(backend: Backend, flags: Record<string, boolean> = {}) {
+  const shell = createShell({ ...config, flags: { rdvs: false, ...flags } }, backend);
   for (const module of modules) module.register(shell);
   return shell;
 }
