@@ -44,6 +44,7 @@ const MESSAGES: Record<string, string> = {
   outside_window: "You can mark arrival from an hour before the start until the RDV ends.",
   rdv_title_invalid: "RDV titles are 3 to 60 characters.",
   rdv_kind_invalid: "Choose meet, cruise or private event.",
+  rdv_area_required: "Name the general area for a private event, such as a neighbourhood. It is shown before people answer, so leave out the street.",
   rdv_place_invalid: "Choose a place for the RDV.",
   rdv_note_invalid: "Notes are up to 280 characters.",
   rdv_radius_invalid: "The arrival radius is 50 to 500 metres.",

@@ -292,11 +292,22 @@ describe("draft helpers", () => {
     expect(withTimeShift(early, 15)).toBe(new Date(2026, 5, 10, 0, 15).getTime());
   });
 
+  it("makes a private event name its own area, never the place", () => {
+    const spot = { name: "Garage 12", kind: "x", address: "9 Lake Rd, Etobicoke", lat: 43.6, lng: -79.5 };
+    const base = { ...emptyDraft(spot, ["c1"], NOW), title: "Private night", kind: "private_event" as const };
+    expect(draftError(base, NOW)).toBe("rdv_area_required");
+    expect(draftError({ ...base, areaName: "  " }, NOW)).toBe("rdv_area_required");
+    expect(draftError({ ...base, areaName: "GARAGE 12" }, NOW)).toBe("rdv_area_required");
+    expect(draftError({ ...base, areaName: "Leslieville" }, NOW)).toBeNull();
+    expect(draftError({ ...base, kind: "meet" }, NOW)).toBeNull();
+    expect(toArgs({ ...base, areaName: " Leslieville " }).p_area_name).toBe("Leslieville");
+  });
+
   it("keeps the RDV's own area name when editing, and works it out again when the place changes", () => {
     const hidden = rdv({ kind: "private_event", areaName: "Leslieville" });
     const edited = { ...draftFromRdv(hidden), note: "bring a chair" };
     expect(toArgs(edited).p_area_name).toBe("Leslieville");
-    const moved = { ...edited, areaName: null, place: { name: "Lot", kind: "x", address: "1 King St, Oakville, ON", lat: 43.4, lng: -79.7 } };
+    const moved = { ...edited, kind: "meet" as const, areaName: null, place: { name: "Lot", kind: "x", address: "1 King St, Oakville, ON", lat: 43.4, lng: -79.7 } };
     expect(toArgs(moved).p_area_name).toBe("Oakville");
   });
 

@@ -98,6 +98,7 @@ export type DraftError =
   | "rdv_title_invalid"
   | "rdv_kind_invalid"
   | "rdv_place_invalid"
+  | "rdv_area_required"
   | "rdv_time_invalid"
   | "rdv_in_past"
   | "rdv_end_invalid"
@@ -107,10 +108,17 @@ export type DraftError =
 
 // The first problem with a draft, as the error code the server would give. `unchangedStart` lets the host edit an RDV
 // that has already started without moving its start.
+// A private event shows its area to members before they answer, so the host names it; it must not be the place itself.
+export const hasOwnArea = (draft: Pick<Draft, "areaName" | "place">): boolean => {
+  const area = (draft.areaName ?? "").trim().toLowerCase();
+  return area.length > 0 && area !== (draft.place?.name ?? "").trim().toLowerCase();
+};
+
 export function draftError(draft: Draft, now: number, unchangedStart: number | null = null): DraftError | null {
   const title = draft.title.trim().length;
   if (title < TITLE_MIN || title > TITLE_MAX) return "rdv_title_invalid";
   if (!draft.place) return "rdv_place_invalid";
+  if (draft.kind === "private_event" && !hasOwnArea(draft)) return "rdv_area_required";
   if (draft.startsAt === null) return "rdv_time_invalid";
   if (draft.startsAt < now && !(unchangedStart !== null && Math.abs(draft.startsAt - unchangedStart) < 1000)) return "rdv_in_past";
   if (draft.durationMin !== null && draft.durationMin <= 0) return "rdv_end_invalid";
@@ -128,7 +136,7 @@ export function toArgs(draft: Draft): Record<string, unknown> {
     p_place_name: draft.place!.name.trim().slice(0, 80) || "Meet point",
     p_lat: draft.place!.lat,
     p_lng: draft.place!.lng,
-    p_area_name: draft.areaName ?? areaName(draft.place!),
+    p_area_name: draft.kind === "private_event" ? (draft.areaName ?? "").trim().slice(0, 60) : draft.areaName?.trim().slice(0, 60) || areaName(draft.place!),
     p_starts_at: new Date(draft.startsAt!).toISOString(),
     p_ends_at: end === null ? null : new Date(end).toISOString(),
     p_note: draft.note.trim() || null,

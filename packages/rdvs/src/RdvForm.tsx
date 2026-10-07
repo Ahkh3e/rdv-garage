@@ -86,10 +86,15 @@ export function RdvForm({ navigation, route }: { navigation: any; route: { param
       <Text variant="label" color={colors.subtle}>Kind</Text>
       <View style={styles.wrap}>
         {KINDS.map((kind) => (
-          <PickChip key={kind} testID={`rdv-kind-${kind}`} label={KIND_LABELS[kind]} selected={draft.kind === kind} onPress={() => set({ kind })} />
+          <PickChip key={kind} testID={`rdv-kind-${kind}`} label={KIND_LABELS[kind]} selected={draft.kind === kind} onPress={() => set(kind === "private_event" && draft.kind !== "private_event" ? { kind, areaName: null } : { kind })} />
         ))}
       </View>
-      {draft.kind === "private_event" ? <Text variant="caption" muted>The exact place stays hidden until a member answers Going or Maybe.</Text> : null}
+      {draft.kind === "private_event" ? (
+        <>
+          <Text variant="caption" muted>The exact place stays hidden until a member answers Going or Maybe.</Text>
+          <Input testID="rdv-area" label="Area" value={draft.areaName ?? ""} onChangeText={(areaName) => set({ areaName })} maxLength={60} placeholder="A neighbourhood, not the street" />
+        </>
+      ) : null}
 
       <Text variant="label" color={colors.subtle}>Place</Text>
       <Pressable testID="rdv-place" accessibilityRole="button" onPress={() => void pickPlace()} style={styles.place}>

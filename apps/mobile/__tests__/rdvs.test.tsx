@@ -310,6 +310,21 @@ describe("create", () => {
     expect(Date.parse(args.p_starts_at as string)).toBeGreaterThan(Date.now());
   });
 
+  it("makes a private event name its area before it can be saved", async () => {
+    const b = backend(() => []);
+    const { shell } = await mount(b);
+    await act(async () => shell.navigate("RdvCreate", { place }));
+    await fireEvent.changeText(await screen.findByTestId("rdv-title"), "Garage night");
+    await fireEvent.press(screen.getByTestId("rdv-kind-private_event"));
+    await fireEvent.press(screen.getByTestId("rdv-save"));
+    expect(await screen.findByText(/Name the general area/)).toBeTruthy();
+    expect(b.calls.some((c) => c.name === "rdvs.create_rdv")).toBe(false);
+    await fireEvent.changeText(screen.getByTestId("rdv-area"), "Leslieville");
+    await fireEvent.press(screen.getByTestId("rdv-save"));
+    await waitFor(() => expect(b.calls.find((c) => c.name === "rdvs.create_rdv")).toBeTruthy());
+    expect(b.calls.find((c) => c.name === "rdvs.create_rdv")!.args).toMatchObject({ p_kind: "private_event", p_area_name: "Leslieville" });
+  });
+
   it("chooses the place through the place picker when none was carried over", async () => {
     const b = backend(() => []);
     const { shell } = await mount(b);

@@ -15,7 +15,7 @@ const row = (over: Record<string, unknown> = {}) => ({
 });
 
 function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: unknown) => unknown; permitted?: boolean } = {}) {
-  const rpc = vi.fn(async (_schema: string, name: string, _args?: unknown) => {
+  const rpc = vi.fn(async (_schema: string, name: string, _args?: unknown): Promise<unknown> => {
     if (name === "list_rdvs") return rows;
     if (name === "create_rdv") return "new";
     if (name === "list_rsvps") return [{ user_id: "u2", handle: "ace", avatar_path: null, answer: "going", arrived: true }];
@@ -50,7 +50,7 @@ function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: 
     handoff: { openDirections },
   };
   const controller = createRdvsController(shell, { reminders, readPosition, now: () => now });
-  return { shell, controller, rpc, invoke, crewStore, positions, navigate, openDirections, scheduled, readPosition, permitted, setAllowed: (v: boolean) => (allowed = v), rpc, setNow: (n: number) => (now = n) };
+  return { shell, controller, rpc, invoke, crewStore, positions, navigate, openDirections, scheduled, readPosition, permitted, setAllowed: (v: boolean) => (allowed = v), setNow: (n: number) => (now = n) };
 }
 
 const here = (over: Partial<MemberPosition> = {}): Record<string, MemberPosition> => ({

@@ -99,6 +99,25 @@ describe("creating RDVs", () => {
     expect((await create(member, [crew.id, (await createCrew(stranger)).id])).error).toBe("not_a_member");
   });
 
+  it("requires a private event to name its own area, never defaulting to the place", async () => {
+    const { member, crew } = await setup();
+    const private_ = { p_kind: "private_event", p_place_name: "Garage 12" };
+    expect((await create(member, [crew.id], { ...private_, p_area_name: null })).error).toBe("rdv_area_required");
+    expect((await create(member, [crew.id], { ...private_, p_area_name: "   " })).error).toBe("rdv_area_required");
+    expect((await create(member, [crew.id], { ...private_, p_area_name: " garage 12 " })).error).toBe("rdv_area_required");
+    const id = await createOk(member, [crew.id], { ...private_, p_area_name: "Etobicoke" });
+    const edit = (over: Record<string, unknown>) =>
+      call(member.client, "rdvs", "update_rdv", {
+        p_rdv: id, p_title: "Sunday meet", p_kind: "private_event", p_place_name: "Garage 12", p_lat: PLACE.lat, p_lng: PLACE.lng, p_area_name: "Etobicoke",
+        p_starts_at: hoursFromNow(5), p_ends_at: null, p_note: null, p_crew_ids: [crew.id], p_radius_m: 150, ...over,
+      });
+    expect((await edit({ p_area_name: null })).error).toBe("rdv_area_required");
+    expect((await edit({ p_area_name: "Garage 12" })).error).toBe("rdv_area_required");
+    expect((await edit({ p_kind: "meet", p_area_name: null })).error).toBeNull();
+    expect((await edit({ p_area_name: "Leslieville" })).error).toBeNull();
+    expect((await create(member, [crew.id], { p_kind: "meet", p_area_name: null })).error).toBeNull();
+  });
+
   it("has no cap per member or crew", async () => {
     const { member, crew } = await setup();
     for (let i = 0; i < 12; i++) await createOk(member, [crew.id]);
