@@ -81,9 +81,8 @@ export function createController(shell: Shell, hub: ChannelHub): LiveController 
       try {
         const sessionId = await engine.start(crewIds, { shareSpeed: options.shareSpeed ?? false });
         if (cancelled()) throw new Error("cancelled");
-        const names = shell.crewContext.store.get().crews.filter((c) => crewIds.includes(c.id)).map((c) => c.name);
         setFixSink((fix: Fix) => engine.onFix(fix));
-        await startUpdates(names);
+        await startUpdates();
         if (cancelled()) throw new Error("cancelled");
         current.timers.push(setInterval(() => void engine.maybeTick(Date.now()), TICK_MS));
         current.timers.push(setInterval(() => engine.rebroadcast(Date.now()), REBROADCAST_CHECK_MS));

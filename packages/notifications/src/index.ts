@@ -14,10 +14,14 @@ export function startNotifications(shell: Shell, notifier: Notifier, appState: (
   const notified = new Map<string, number>();
   const offs: (() => void)[] = [];
 
+  // Nothing is live when the app starts, so clear anything a killed session left behind.
+  void notifier.hideLive();
+
   offs.push(
-    shell.events.on("session.started", async (event) => {
-      const names = shell.crewContext.store.get().crews.filter((c) => event.crewIds.includes(c.id)).map((c) => c.name);
-      if (await notifier.ensurePermission().catch(() => false)) await notifier.showLive(names).catch(() => undefined);
+    shell.events.on("session.started", async () => {
+      // Asking for notification permission here is for the friend notifications; the live indicator does not depend on it.
+      void notifier.ensurePermission().catch(() => false);
+      await notifier.showLive().catch(() => undefined);
     }),
     shell.events.on("session.ended", () => void notifier.hideLive()),
     shell.events.on("account.deleted", () => void notifier.hideLive()),
@@ -35,14 +39,16 @@ export function startNotifications(shell: Shell, notifier: Notifier, appState: (
     if (fresh.length === 0 || appState() === "active") return;
     const crews = shell.crewContext.store.get().crews;
     for (const member of fresh) {
-      const crew = crews.find((c) => member.crewIds.includes(c.id) && selected.has(c.id) && c.members.some((m) => m.userId === member.userId));
-      const handle = crew?.members.find((m) => m.userId === member.userId)?.handle;
-      if (!crew || !handle) continue;
+      const shared = crews.filter((c) => member.crewIds.includes(c.id) && selected.has(c.id) && c.members.some((m) => m.userId === member.userId));
+      const handle = shared[0]?.members.find((m) => m.userId === member.userId)?.handle;
+      if (!handle) continue;
+      // Name the crew only when it is unambiguous: someone can share more than one crew with you.
+      const crewName = shared.length === 1 ? shared[0]!.name : null;
       notified.set(member.userId, Date.now());
       void notifier
         .ensurePermission()
         .then(async (ok) => {
-          if (ok) await notifier.showFriend(member.userId, handle, crew.name);
+          if (ok) await notifier.showFriend(member.userId, handle, crewName);
         })
         .catch(() => undefined);
     }

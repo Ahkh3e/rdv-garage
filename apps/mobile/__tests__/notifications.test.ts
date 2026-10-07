@@ -4,6 +4,8 @@ import type { Notifier } from "../../../packages/notifications/src/notifier";
 import { makeBackend, config } from "./helpers";
 
 jest.mock("expo-notifications", () => ({}));
+jest.mock("expo-live-activity", () => ({}));
+jest.mock("expo-secure-store", () => ({ getItemAsync: jest.fn(async () => null), setItemAsync: jest.fn(), deleteItemAsync: jest.fn() }));
 
 function setup(appState = "background") {
   const shell = createShell(config, makeBackend("me")) as Shell;
@@ -18,9 +20,9 @@ function setup(appState = "background") {
   const calls: string[] = [];
   const notifier: Notifier = {
     ensurePermission: jest.fn(async () => true),
-    showLive: jest.fn(async (names) => void calls.push(`live:${names.join(",")}`)),
+    showLive: jest.fn(async () => void calls.push("live")),
     hideLive: jest.fn(async () => void calls.push("hide")),
-    showFriend: jest.fn(async (_id, handle, crew) => void calls.push(`friend:${handle}:${crew}`)),
+    showFriend: jest.fn(async (_id, handle, crew) => void calls.push(`friend:${handle}:${crew ?? "-"}`)),
   };
   let state = appState;
   startNotifications(shell, notifier, () => state);
@@ -31,30 +33,32 @@ function setup(appState = "background") {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("live notification", () => {
-  it("shows a notification that you are live, with the crew names, and removes it when you stop", async () => {
+  it("shows a notification that you are live, without naming crews, and removes it when you stop", async () => {
     const { shell, calls } = setup();
     shell.events.emit({ type: "session.started", sessionId: "s1", crewIds: ["c1"] });
     await flush();
-    expect(calls).toContain("live:Night Cruisers");
+    expect(calls).toContain("live");
+    expect(calls.join("|")).not.toContain("Night Cruisers");
     shell.events.emit({ type: "session.ended", sessionId: "s1" });
     await flush();
     expect(calls).toContain("hide");
   });
 
-  it("does not show it when notifications are not allowed", async () => {
+  it("shows the live indicator even when notifications are not allowed", async () => {
     const { shell, notifier } = setup();
     (notifier.ensurePermission as jest.Mock).mockResolvedValue(false);
     shell.events.emit({ type: "session.started", sessionId: "s1", crewIds: ["c1"] });
     await flush();
-    expect(notifier.showLive).not.toHaveBeenCalled();
+    expect(notifier.showLive).toHaveBeenCalledTimes(1);
   });
 
-  it("removes it when the account is deleted or suspended", async () => {
+  it("clears anything left behind at startup, and when the account is deleted or suspended", async () => {
     const { shell, notifier } = setup();
+    expect(notifier.hideLive).toHaveBeenCalledTimes(1);
     shell.events.emit({ type: "account.deleted" });
     shell.events.emit({ type: "account.suspended" });
     await flush();
-    expect(notifier.hideLive).toHaveBeenCalledTimes(2);
+    expect(notifier.hideLive).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -80,6 +84,21 @@ describe("friend goes live", () => {
     publish("me");
     await flush();
     expect(notifier.showFriend).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not name a crew when the friend shares more than one crew with you", async () => {
+    const { shell, calls, publish } = setup("background");
+    shell.crewContext.setCrews([
+      ...shell.crewContext.store.get().crews,
+      { id: "c2", name: "Sunday Meets", description: null, avatarPath: null, ownerId: "me", role: "owner", linkCode: null, selected: true, members: [
+        { userId: "me", handle: "tester", avatarPath: null, carIcon: "gt", role: "owner", live: true },
+        { userId: "u2", handle: "mate", avatarPath: null, carIcon: "gt", role: "member", live: true },
+      ] },
+    ]);
+    shell.crewContext.select(["c1", "c2"]);
+    publish("u2", ["c1", "c2"]);
+    await flush();
+    expect(calls).toContain("friend:mate:-");
   });
 
   it("ignores members of crews you have not switched on", async () => {
