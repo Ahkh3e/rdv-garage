@@ -32,7 +32,7 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }: TaskManager.TaskMa
   }
 });
 
-export async function startUpdates(crewNames: string[]): Promise<void> {
+export async function startUpdates(): Promise<void> {
   if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK)) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
     accuracy: Location.Accuracy.BestForNavigation,
@@ -43,7 +43,7 @@ export async function startUpdates(crewNames: string[]): Promise<void> {
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: "RDV Garage is live",
-      notificationBody: crewNames.length ? `Visible to ${crewNames.join(", ")}` : "Sharing your location",
+      notificationBody: "Sharing your live location with your crews",
       notificationColor: "#2F6FF2",
     },
   });

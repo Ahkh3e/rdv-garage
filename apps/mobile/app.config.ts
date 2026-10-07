@@ -54,6 +54,8 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-secure-store",
+    ["expo-notifications", { color: "#2F6FF2" }],
+    "expo-live-activity",
     "expo-font",
     ["expo-splash-screen", { image: "./assets/splash-icon.png", imageWidth: 200, backgroundColor: "#080A0F" }],
     "expo-dev-client",
