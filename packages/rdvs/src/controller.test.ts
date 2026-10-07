@@ -104,6 +104,12 @@ describe("rdvs controller", () => {
     expect(await controller.people("r1")).toEqual([{ userId: "u2", handle: "ace", avatarPath: null, answer: "going", arrived: true }]);
   });
 
+  it("reads the person's own meets attended from the server", async () => {
+    const { controller, rpc } = setup();
+    await controller.meetsAttended();
+    expect(rpc).toHaveBeenCalledWith("rdvs", "my_meets_attended");
+  });
+
   it("hands directions to the maps app for a visible place only", async () => {
     const { controller, openDirections } = setup([row(), row({ id: "p", kind: "private_event", place: null })]);
     await controller.refresh();

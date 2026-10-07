@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { call, callOk, createCrew, createUser, invokeAs, sql, type TestUser } from "./helpers";
+import { anon, call, callOk, createCrew, createUser, invokeAs, sql, type TestUser } from "./helpers";
 
 interface RdvRow {
   id: string;
@@ -519,6 +519,28 @@ describe("record_arrival", () => {
       "select (select count(*) from rdvs.arrivals a where row_to_json(a)::text like '%0012345%') + (select count(*) from rdvs.rsvps a where row_to_json(a)::text like '%0012345%') + (select count(*) from rdvs.rdvs a where row_to_json(a)::text like '%0012345%') + (select count(*) from rdvs.places a where row_to_json(a)::text like '%0012345%') as n",
     );
     expect(Number(all[0]!.n)).toBe(0);
+  });
+});
+
+describe("my_meets_attended", () => {
+  it("counts the caller's own arrivals, including at RDVs of a crew they left", async () => {
+    const { member, other, owner, crew } = await setup();
+    expect(await callOk<number>(member.client, "rdvs", "my_meets_attended")).toBe(0);
+    const first = await createOk(owner, [crew.id]);
+    const second = await createOk(owner, [crew.id]);
+    await move(first, -10);
+    await move(second, -10);
+    await arrive(member, first);
+    await arrive(member, second);
+    await arrive(other, first);
+    expect(await callOk<number>(member.client, "rdvs", "my_meets_attended")).toBe(2);
+    expect(await callOk<number>(other.client, "rdvs", "my_meets_attended")).toBe(1);
+    await callOk(member.client, "crews", "leave_crew", { p_crew: crew.id });
+    expect(await callOk<number>(member.client, "rdvs", "my_meets_attended")).toBe(2);
+  });
+
+  it("needs a signed-in caller", async () => {
+    expect((await call(anon, "rdvs", "my_meets_attended")).error).not.toBeNull();
   });
 });
 

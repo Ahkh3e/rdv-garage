@@ -38,6 +38,7 @@ export const REFRESH_MS = 30000;
 export const DETAIL_ROUTE = "RdvDetail";
 export const EDIT_ROUTE = "RdvEdit";
 export const PLANS_ROUTE = "Plans";
+export const STATS_ROUTE = "Stats";
 const RETRY_AFTER_ERROR_MS = 60000;
 const FINAL_CODES = new Set(["rdv_closed", "rdv_not_found"]);
 
@@ -198,6 +199,8 @@ export function createRdvsController(
       await shell.backend.invoke("record_arrival", { rdv_id: id, position: { lat: position.lat, lng: position.lng }, method: "here" });
       await controller.refresh();
     },
+
+    meetsAttended: () => shell.backend.rpc<number>("rdvs", "my_meets_attended"),
 
     directions(rdv: Rdv) {
       if (!rdv.place) throw new AppError("rdv_place_invalid");
