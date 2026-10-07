@@ -34,7 +34,8 @@ Local link note: the simulators open `rdvgarage://` links directly. Universal li
 
 - Simulator menu, Features, Location: City Run, Freeway Drive, Custom Location. Or `xcrun simctl location <udid> run city-run` and `xcrun simctl location <udid> set 43.6532,-79.3832`.
 - A route at a chosen speed: `xcrun simctl location <udid> start --speed=19 <lat,lng> <lat,lng> ...` (metres per second; 19 is about 68 km/h). The follow camera and the weekly top speed both respond to it.
-- Fake members: `./ops/bin/rdv-ops.mjs sim live --crew <crew id> --users 3 --duration 180 --route highway`.
+- Fake members on the real channels, with the local keys filled in for you: `scripts/sim-drive.sh <crew id> [users] [seconds, default an hour] [city|highway]`, run from the code repo. A simulator can loop a road route with `node scripts/sim-phone.mjs <udid> loopA 13` (Ctrl-C to stop). They show up as moving members with movement trails on every phone in the crew. The lower-level command is `./ops/bin/rdv-ops.mjs sim live --crew <crew id> --users 3 --duration 180 --route highway`.
+- Movement trails are the last three minutes of positions already shared with the crew, kept in memory on each phone only. Drive a simulator along a route (`xcrun simctl location <udid> start --speed=17 ...`) to see your own trail, and tap the live pill on the map to fit everyone.
 - Simulator background location is limited, so lock-screen behavior is a device test, not a simulator one.
 
 ## 4. Scenarios (pass or fail each)

@@ -44,6 +44,20 @@ describe("LiveEngine", () => {
     expect(MOVING_BROADCAST_MS).toBe(3000);
   });
 
+  it("broadcasts early when the direction changes, but not on a straight road", async () => {
+    const { engine, log, advance, fix } = setup();
+    await engine.start(["a"]);
+    const north = (m: number) => 43.65 + m / 111320;
+    engine.onFix(fix({ lat: north(0) }));
+    advance(3000); engine.onFix(fix({ lat: north(45), ts: advance(0) }));
+    advance(3000); engine.onFix(fix({ lat: north(90), ts: advance(0) }));
+    expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(3);
+    advance(1100); engine.onFix(fix({ lat: north(105), ts: advance(0) }));
+    expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(3);
+    advance(1100); engine.onFix(fix({ lat: north(105), lng: -79.38 + 25 / 80000, ts: advance(0) }));
+    expect(log.broadcasts.filter((b) => b.event === "pos").length).toBe(4);
+  });
+
   it("broadcasts every 15 seconds while stationary", async () => {
     const { engine, log, advance, fix } = setup();
     await engine.start(["a"]);

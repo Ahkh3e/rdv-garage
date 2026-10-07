@@ -4,9 +4,12 @@ import { useIsFocused } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import { Camera, Map, ViewAnnotation, type CameraRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Glass, GlassButton, Slot, Text, colors, crewStyle, radii, useCrewState, usePositions, useSession } from "@rdv/core";
+import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
+import { Avatar, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
+import { GlidingAnnotation } from "./GlidingAnnotation";
 import { MemberMarker, SelfMarker } from "./MemberMarker";
+import { RoadIndex, linesFromFeatures } from "./roadSnap";
+import { appendTrail, snapTrail, trailFeatures, type TrailPoint, type TrailSet } from "./trails";
 import { FLAT_PITCH, FOLLOW_CAMERA, rdvNightStyle, rdvNightStyleFlat } from "./style";
 
 const TORONTO: [number, number] = [-79.3832, 43.6532];
@@ -17,6 +20,12 @@ const SHEET_OVERLAP = 20;
 const MIN_ZOOM = 3;
 const MAX_ZOOM = 19;
 const JUMP_ZOOM = 16;
+const ROAD_LAYERS = ["road-service", "road-minor", "road-tertiary", "road-secondary", "road-primary", "road-trunk", "road-motorway"];
+const MIN_SNAP_ZOOM = 13.5;
+// Like a navigation route: the trail is as wide as the road under it, so its width follows the map style's road widths.
+const roadWidth = (k: number) => ["interpolate", ["exponential", 1.4], ["zoom"], 8, 0.8 * k, 12, 2 * k, 14, 4 * k, 16, 7 * k, 18, 14 * k, 20, 28 * k] as never;
+const TRAIL_WIDTH = roadWidth(1);
+const TRAIL_GLOW_WIDTH = roadWidth(1.7);
 
 interface Me {
   lat: number;
@@ -36,6 +45,14 @@ export function MapScreen() {
   const [follow, setFollow] = useState(true);
   const [view3d, setView3d] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  const mapRef = useRef<MapRef>(null);
+  const roads = useRef<RoadIndex | null>(null);
+  const roadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [roadVersion, setRoadVersion] = useState(0);
+  const dirty = useRef(false);
+  const lastRoadQuery = useRef<{ lng: number; lat: number; zoom: number; at: number } | null>(null);
+  const trails = useRef<Record<string, TrailSet>>({});
+  const [trailTick, setTrailTick] = useState(0);
   const [followMember, setFollowMember] = useState(false);
   const pitch = useRef<number>(FOLLOW_CAMERA.pitch);
   const [me, setMe] = useState<Me | null>(null);
@@ -78,9 +95,18 @@ export function MapScreen() {
       if (!alive) return;
       if (result.status !== "granted") return setPermission("denied");
       setPermission("granted");
+      let previous: { lat: number; lng: number } | null = null;
+      let derived: number | null = null;
       const watcher = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, (loc) => {
-        const moving = (loc.coords.speed ?? 0) > 2 && loc.coords.heading !== null && loc.coords.heading >= 0;
-        setMe({ lat: loc.coords.latitude, lng: loc.coords.longitude, heading: moving ? loc.coords.heading : null });
+        const here = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+        // Some phones and simulators report no heading. Fall back to the direction of travel between two fixes.
+        if (previous && haversineMeters(previous, here) >= 4) {
+          derived = bearingDegrees(previous, here);
+          previous = here;
+        } else if (!previous) previous = here;
+        const reported = loc.coords.heading !== null && loc.coords.heading >= 0 ? loc.coords.heading : null;
+        const moving = (loc.coords.speed ?? 0) > 2 || derived !== null;
+        setMe({ ...here, heading: moving ? (reported ?? derived) : null });
       });
       if (!alive) return watcher.remove();
       sub = watcher;
@@ -125,6 +151,73 @@ export function MapScreen() {
   const others = Object.values(positions).filter(
     (p) => p.userId !== myId && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
+
+  // The road lines the map has already loaded for what is on screen. Trails are matched to these on the phone only.
+  const refreshRoads = useCallback((center?: [number, number]) => {
+    if (roadTimer.current) clearTimeout(roadTimer.current);
+    roadTimer.current = setTimeout(async () => {
+      if (zoom.current < MIN_SNAP_ZOOM) return;
+      const last = lastRoadQuery.current;
+      const now = Date.now();
+      // Only look again after the view has moved a good way or zoomed, and not more than every couple of seconds.
+      if (last && roads.current) {
+        const moved = center ? Math.hypot((center[0] - last.lng) * 80000, (center[1] - last.lat) * 111320) : 0;
+        if (now - last.at < 2500 || (moved < 200 && Math.abs(zoom.current - last.zoom) < 0.7)) return;
+      }
+      try {
+        const features = await mapRef.current?.queryRenderedFeatures({ layers: ROAD_LAYERS });
+        const lines = linesFromFeatures(features ?? []);
+        if (lines.length === 0) return;
+        roads.current = new RoadIndex(lines);
+        lastRoadQuery.current = { lng: center?.[0] ?? 0, lat: center?.[1] ?? 0, zoom: zoom.current, at: now };
+        setRoadVersion((n) => n + 1);
+      } catch {
+        // The map is not ready yet; the next region change tries again.
+      }
+    }, 600);
+  }, []);
+  useEffect(() => () => void (roadTimer.current && clearTimeout(roadTimer.current)), []);
+
+  // Trail drawing is throttled: the line is rebuilt about once a second however often positions arrive.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!dirty.current) return;
+      dirty.current = false;
+      setTrailTick((n) => n + 1);
+    }, 900);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Movement trails: the last few minutes of positions already shared with the crew, kept in memory only.
+  useEffect(() => {
+    const t = Date.now();
+    const next: Record<string, TrailSet> = {};
+    for (const p of others) {
+      const info = lookup.get(p.userId);
+      // Someone who has stopped sending updates keeps their marker (it fades) but their trail is cleared.
+      if (!info || t - p.ts > FADE_AFTER_MS) continue;
+      const point: TrailPoint = { lng: p.lng, lat: p.lat, ts: p.ts };
+      next[p.userId] = { color: crewStyle(info.styleIndex).tint, points: appendTrail(trails.current[p.userId]?.points ?? [], point, t) };
+    }
+    if (me) next.me = { color: colors.accentBright, points: appendTrail(trails.current.me?.points ?? [], { lng: me.lng, lat: me.lat, ts: t }, t) };
+    for (const trail of Object.values(next)) snapTrail(trail.points, roads.current);
+    trails.current = next;
+    dirty.current = true;
+  }, [positions, crewState.selected, me]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // New road geometry arrived: match any points that were waiting for it.
+  useEffect(() => {
+    for (const trail of Object.values(trails.current)) snapTrail(trail.points, roads.current);
+    dirty.current = true;
+  }, [roadVersion]);
+
+  // Where a marker is drawn: on the road once the trail has been matched to one.
+  const headPosition = (id: string, raw: { lng: number; lat: number }) => {
+    const head = trails.current[id]?.points.at(-1);
+    return head?.snap ? { lng: head.snap.lng, lat: head.snap.lat } : { lng: raw.lng, lat: raw.lat };
+  };
+
+  const trailData = useMemo(() => trailFeatures(trails.current), [trailTick]);
 
   const selectedPosition = selected ? others.find((p) => p.userId === selected) ?? null : null;
   const selectedInfo = selected ? lookup.get(selected) ?? null : null;
@@ -216,6 +309,7 @@ export function MapScreen() {
     <View style={styles.root} onLayout={onLayout}>
       <Animated.View style={[styles.mapArea, { height: mapHeight }]}>
         <Map
+          ref={mapRef}
           testID="map-view"
           style={StyleSheet.absoluteFill}
           mapStyle={view3d ? rdvNightStyle : rdvNightStyleFlat}
@@ -224,8 +318,10 @@ export function MapScreen() {
           tintColor={colors.subtle}
           attribution
           attributionPosition={{ bottom: SHEET_OVERLAP + 6, left: 8 }}
+          onDidFinishRenderingMapFully={() => refreshRoads()}
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
+            refreshRoads(event.nativeEvent.center as [number, number]);
             // Dragging or pinching the map by hand ends follow mode; the home button brings it back.
             if (event.nativeEvent.userInteraction) {
               setFollow(false);
@@ -234,17 +330,21 @@ export function MapScreen() {
           }}
         >
           <Camera ref={camera} initialViewState={{ center: TORONTO, zoom: 11.5 }} />
+          <GeoJSONSource id="trails" data={trailData}>
+            <Layer type="line" id="trail-glow" style={{ lineColor: ["get", "color"], lineOpacity: ["*", ["get", "a"], 0.35], lineWidth: TRAIL_GLOW_WIDTH, lineBlur: 10, lineCap: "round", lineJoin: "round" }} />
+            <Layer type="line" id="trail-line" style={{ lineColor: ["get", "color"], lineOpacity: ["get", "a"], lineWidth: TRAIL_WIDTH, lineCap: "round", lineJoin: "round" }} />
+          </GeoJSONSource>
           {me ? (
-            <ViewAnnotation id="me" lngLat={[me.lng, me.lat]} anchor="center">
+            <GlidingAnnotation id="me" target={headPosition("me", me)} ms={450}>
               <SelfMarker following={follow} />
-            </ViewAnnotation>
+            </GlidingAnnotation>
           ) : null}
           {others.map((p) => {
             const info = lookup.get(p.userId)!;
             return (
-              <ViewAnnotation key={p.userId} id={p.userId} lngLat={[p.lng, p.lat]} anchor="center">
+              <GlidingAnnotation key={p.userId} id={p.userId} target={headPosition(p.userId, p)}>
                 <MemberMarker handle={info.handle} avatarPath={info.avatarPath} styleIndex={info.styleIndex} stale={now - p.ts > FADE_AFTER_MS} />
-              </ViewAnnotation>
+              </GlidingAnnotation>
             );
           })}
         </Map>
