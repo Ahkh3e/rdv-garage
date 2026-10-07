@@ -5,7 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Button, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, useShell } from "@rdv/core";
+import { Avatar, Button, CarIcon, Glass, GlassButton, PIN_KIND, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, useShell, useStore } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
 import { PinLayer } from "./PinLayer";
 import { poisFromFeatures } from "./pois";
@@ -38,6 +38,7 @@ interface Me {
 export function MapScreen() {
   const focused = useIsFocused();
   const shell = useShell();
+  const droppedPins = useStore(shell.pins.store).filter((pin) => pin.kind === PIN_KIND);
   const navigation = useNavigation<any>();
   const session = useSession();
   const crewState = useCrewState();
@@ -488,6 +489,30 @@ export function MapScreen() {
           ) : members.length === 0 && crewState.loaded ? (
             <Text variant="body" muted>{crewState.selected.length === 0 ? "Switch on a crew in Crews to see its members." : "Your crews have no other members yet."}</Text>
           ) : null}
+          {droppedPins.length > 0 ? <Text variant="caption" muted style={styles.listHeading}>PINS</Text> : null}
+          {droppedPins.map((pin, i) => (
+            <Pressable
+              key={pin.id}
+              testID={`map-pin-${pin.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Show pin ${pin.label} on the map`}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => undefined);
+                jumpTo(pin.id, pin.lat, pin.lng);
+                shell.pins.press(pin.id);
+              }}
+              style={({ pressed }) => [styles.member, i > 0 && styles.memberDivider, pressed && { backgroundColor: colors.press }]}
+            >
+              <View style={[styles.pinBadge, { backgroundColor: crewStyle(pin.colorKey).tint }]}>
+                <Feather name="map-pin" size={20} color={colors.onAccent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="headline" numberOfLines={1}>{pin.label}</Text>
+                <Text variant="caption" color={colors.muted} numberOfLines={1}>Dropped pin</Text>
+              </View>
+            </Pressable>
+          ))}
+          {droppedPins.length > 0 && members.length > 0 ? <Text variant="caption" muted style={styles.listHeading}>MEMBERS</Text> : null}
           {members.map((m, i) => {
             const tint = crewStyle(m.styleIndex).tint;
             const position = m.position;
@@ -543,7 +568,7 @@ const styles = StyleSheet.create({
   top: { position: "absolute", top: 60, left: 16, right: 80, alignItems: "flex-start" },
   pill: { flexDirection: "row", alignItems: "center", gap: 8, height: 32, paddingHorizontal: 12, borderRadius: radii.pill },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
-  notice: { position: "absolute", top: 152, left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
+  notice: { position: "absolute", top: 208, left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
   controls: { position: "absolute", right: 16, bottom: SHEET_OVERLAP + 96, gap: 12 },
   sheet: { flex: 1, marginTop: -SHEET_OVERLAP, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, borderBottomWidth: 0 },
   handleHit: { alignItems: "center", paddingTop: 8, paddingBottom: 8 },
@@ -552,6 +577,8 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { paddingHorizontal: 8, paddingBottom: 96 },
   member: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 12, borderRadius: radii.sm },
+  listHeading: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4, letterSpacing: 1 },
+  pinBadge: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   memberDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
   firstCrew: { gap: 6, paddingHorizontal: 12, paddingTop: 8 },
   status: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 64, justifyContent: "flex-end" },

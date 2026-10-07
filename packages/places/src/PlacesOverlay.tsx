@@ -60,6 +60,6 @@ export function PlacesOverlay() {
 const styles = StyleSheet.create({
   top: { position: "absolute", top: 98, left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 10 },
   search: { flex: 1, borderRadius: radii.pill },
-  panel: { position: "absolute", top: 152, left: 16, right: 16, maxHeight: 360, borderRadius: radii.xl, overflow: "hidden" },
+  panel: { position: "absolute", top: 208, left: 16, right: 16, maxHeight: 360, borderRadius: radii.xl, overflow: "hidden" },
   card: { position: "absolute", left: 16, right: 76, bottom: 92 },
 });
