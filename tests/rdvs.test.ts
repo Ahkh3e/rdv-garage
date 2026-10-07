@@ -258,7 +258,8 @@ describe("editing and cancelling", () => {
     await rsvp(owner, id, "going");
     await move(id, -10);
     await arrive(owner, id);
-    const [{ starts_at }] = await sql<{ starts_at: Date }>("select starts_at from rdvs.rdvs where id = $1", [id]);
+    const [stored] = await sql<{ starts_at: Date }>("select starts_at from rdvs.rdvs where id = $1", [id]);
+    const starts_at = stored!.starts_at;
     const edit = await call(member.client, "rdvs", "update_rdv", {
       p_rdv: id, p_title: "Late meet", p_kind: "meet", p_place_name: "Harbour lot", p_lat: PLACE.lat, p_lng: PLACE.lng, p_area_name: "Waterfront",
       p_starts_at: starts_at.toISOString(), p_ends_at: hoursFromNow(1), p_note: null, p_crew_ids: [crew.id], p_radius_m: 150,
