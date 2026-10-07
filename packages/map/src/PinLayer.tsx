@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { AccessibilityInfo, AppState } from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 import { GeoJSONSource, Images, Layer } from "@maplibre/maplibre-react-native";
 import { PIN_KIND, RDV_KIND, colors, useShell, useStore } from "@rdv/core";
-import { pinFeatures } from "./pins";
+import { PULSE_CYCLE_MS, PULSE_STEPS, PULSE_STILL, pinFeatures, pulsePhase, pulseStep } from "./pins";
 
 const FLAG_IMAGE = { source: require("../assets/flag.png") };
-const PULSE_MS = 1800;
 const IS_PIN = ["==", ["get", "kind"], PIN_KIND] as never;
 const IS_RDV = ["==", ["get", "kind"], RDV_KIND] as never;
 const IS_DOT = ["all", ["!=", ["get", "kind"], PIN_KIND], ["!=", ["get", "kind"], RDV_KIND]] as never;
@@ -17,13 +18,35 @@ export function PinLayer() {
   const data = useMemo<GeoJSON.FeatureCollection>(() => ({ type: "FeatureCollection", features: pinFeatures(pins) }), [pins]);
 
   const hasPins = pins.some((pin) => pin.kind === PIN_KIND);
-  const [phase, setPhase] = useState(0);
+  const focused = useIsFocused();
+  const [active, setActive] = useState(AppState.currentState === "active");
+  const [still, setStill] = useState(false);
+  const [phase, setPhase] = useState(PULSE_STILL);
+
   useEffect(() => {
-    if (!hasPins) return;
+    const sub = AppState.addEventListener("change", (next) => setActive(next === "active"));
+    return () => sub.remove();
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((on) => alive && setStill(on), () => undefined);
+    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", setStill);
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, []);
+
+  const animate = hasPins && focused && active && !still;
+  useEffect(() => {
+    if (!animate) {
+      setPhase(PULSE_STILL);
+      return;
+    }
     const start = Date.now();
-    const timer = setInterval(() => setPhase(((Date.now() - start) % PULSE_MS) / PULSE_MS), 60);
+    const timer = setInterval(() => setPhase(pulsePhase(pulseStep(Date.now() - start))), PULSE_CYCLE_MS / PULSE_STEPS);
     return () => clearInterval(timer);
-  }, [hasPins]);
+  }, [animate]);
 
   return (
     <>
