@@ -141,6 +141,13 @@ describe("signed in", () => {
     for (const tab of ["Map", "Crews", "Board", "Me"]) expect(screen.getAllByText(tab).length).toBeGreaterThan(0);
   });
 
+  it("prompts a new member with no crews to create or join one, right on the map", async () => {
+    await mount(signedIn({ "crews.list_my_crews": () => [] }));
+    expect(await screen.findByText("Start with a crew")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("map-create-crew"));
+    expect(await screen.findByTestId("crew-name")).toBeTruthy();
+  });
+
   it("shows an empty state with create and join when there are no crews", async () => {
     await mountOnCrews(signedIn({ "crews.list_my_crews": () => [] }));
     expect(await screen.findByText("No crews yet")).toBeTruthy();

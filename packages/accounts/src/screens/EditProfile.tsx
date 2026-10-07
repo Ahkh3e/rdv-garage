@@ -54,7 +54,7 @@ export function EditProfile({ navigation }: { navigation: any }) {
       </View>
       <Input testID="edit-handle" label="Handle" autoCapitalize="none" autoCorrect={false} value={handle} onChangeText={(t) => { setHandle(t); setSaved(false); }} error={saveHandle.error} hint="You can change your handle once every 30 days." />
       {saved ? <Banner text="Saved." /> : null}
-      <Button title="Save handle" loading={saveHandle.loading} disabled={handle === profile.handle || handle.length < 3} onPress={() => saveHandle.run()} />
+      <Button title="Save handle" testID="edit-save" loading={saveHandle.loading} disabled={handle === profile.handle || handle.length < 3} onPress={() => saveHandle.run()} />
       <Button title="Done" variant="ghost" onPress={() => navigation.goBack()} />
     </Screen>
   );
