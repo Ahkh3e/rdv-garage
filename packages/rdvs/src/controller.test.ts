@@ -31,7 +31,8 @@ function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: 
   const navigate = vi.fn();
   const openDirections = vi.fn(async () => undefined);
   const scheduled = new Map<string, { key: string; at: number; title?: string; body?: string }>();
-  const permitted = vi.fn(async () => over.permitted ?? true);
+  let allowed = over.permitted ?? true;
+  const permitted = vi.fn(async () => allowed);
   const reminders: ReminderStore = {
     permitted,
     list: async () => [...scheduled.values()],
@@ -49,7 +50,7 @@ function setup(rows: unknown[] = [row()], over: { invoke?: (name: string, body: 
     handoff: { openDirections },
   };
   const controller = createRdvsController(shell, { reminders, readPosition, now: () => now });
-  return { shell, controller, rpc, invoke, crewStore, positions, navigate, openDirections, scheduled, readPosition, permitted, setNow: (n: number) => (now = n) };
+  return { shell, controller, rpc, invoke, crewStore, positions, navigate, openDirections, scheduled, readPosition, permitted, setAllowed: (v: boolean) => (allowed = v), rpc, setNow: (n: number) => (now = n) };
 }
 
 const here = (over: Partial<MemberPosition> = {}): Record<string, MemberPosition> => ({
@@ -246,6 +247,33 @@ describe("arrival", () => {
   });
 });
 
+describe("refresh ordering", () => {
+  it("applies only the latest response when an older refresh finishes last", async () => {
+    const { controller, rpc } = setup();
+    const waiting: ((rows: unknown[]) => void)[] = [];
+    rpc.mockImplementation(async (_s: string, name: string) => (name === "list_rdvs" ? new Promise((resolve) => waiting.push(resolve)) : undefined));
+    const first = controller.refresh();
+    const second = controller.setRsvp("r1", "going");
+    await tick();
+    waiting[1]!([row({ my_answer: "going" })]);
+    await second;
+    waiting[0]!([row({ my_answer: null })]);
+    await first;
+    expect(controller.find("r1")!.myAnswer).toBe("going");
+  });
+
+  it("drops a response that arrives after a reset", async () => {
+    const { controller, rpc } = setup();
+    let finish: (rows: unknown[]) => void = () => undefined;
+    rpc.mockImplementation(async (_s: string, name: string) => (name === "list_rdvs" ? new Promise((resolve) => (finish = resolve)) : undefined));
+    const pending = controller.refresh();
+    controller.reset();
+    finish([row()]);
+    await pending;
+    expect(controller.state.get().rdvs).toEqual([]);
+  });
+});
+
 describe("reminders", () => {
   it("schedules going and maybe, and cancels when the answer changes or the RDV is cancelled", async () => {
     const future = { starts_at: iso(NOW + 5 * H), end_at: iso(NOW + 8 * H) };
@@ -283,15 +311,30 @@ describe("reminders", () => {
     expect(permitted).toHaveBeenCalledTimes(1);
   });
 
-  it("schedules nothing and does not ask again every cycle when notifications are not permitted", async () => {
+  it("schedules nothing while notifications are not permitted, and schedules once they are, with no other change", async () => {
     const future = { starts_at: iso(NOW + 5 * H), end_at: iso(NOW + 8 * H), my_answer: "going" };
-    const { controller, permitted, scheduled } = setup([row(future)], { permitted: false });
-    await controller.refresh();
+    const { controller, setAllowed, scheduled } = setup([row(future)], { permitted: false });
     await controller.refresh();
     await controller.refresh();
     await tick();
     expect(scheduled.size).toBe(0);
-    expect(permitted).toHaveBeenCalledTimes(1);
+    setAllowed(true);
+    await controller.refresh();
+    await tick();
+    expect([...scheduled.keys()]).toEqual(["rdv-r1"]);
+  });
+
+  it("does not schedule a second reminder after the first one fired", async () => {
+    const future = { starts_at: iso(NOW + 5 * H), end_at: iso(NOW + 8 * H), my_answer: "going" };
+    const { controller, scheduled, setNow } = setup([row(future)]);
+    await controller.refresh();
+    await tick();
+    expect(scheduled.get("rdv-r1")!.at).toBe(NOW + 4 * H);
+    scheduled.clear();
+    setNow(NOW + 4 * H + 60000);
+    await controller.refresh();
+    await tick();
+    expect(scheduled.size).toBe(0);
   });
 
   it("keeps reminders while crews have not loaded, and clears them once crews load empty or the person signs out", async () => {

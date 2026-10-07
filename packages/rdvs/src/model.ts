@@ -175,12 +175,12 @@ export interface Reminder {
   body: string;
 }
 
-// One reminder an hour before the start for an RDV the person answered going or maybe. Closer than that it fires at the
-// start. Nothing for a cancelled or ended RDV, or when the answer is cant or none.
+// One reminder an hour before the start for an RDV the person answered going or maybe, while that time is still ahead.
+// A reminder that already fired is never replaced by one at the start. Nothing for a cancelled or ended RDV, or when the
+// answer is cant or none.
 export function reminderFor(rdv: Rdv, now: number, formatTime: (ms: number) => string): Reminder | null {
   if (rdv.status !== "scheduled" || (rdv.myAnswer !== "going" && rdv.myAnswer !== "maybe")) return null;
-  let at = rdv.startsAt - REMINDER_LEAD_MS;
-  if (at <= now) at = rdv.startsAt;
+  const at = rdv.startsAt - REMINDER_LEAD_MS;
   if (at <= now) return null;
   const where = rdv.place ? rdv.place.name : rdv.areaName;
   return { key: `rdv-${rdv.id}`, at, title: rdv.title, body: `${formatTime(rdv.startsAt)}  ·  ${where}` };

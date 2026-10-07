@@ -173,9 +173,16 @@ describe("reminders", () => {
     expect(reminderFor(rdv({ myAnswer: "maybe" }), NOW, fmt)).not.toBeNull();
   });
 
-  it("fires at the start when less than an hour remains, and not after it", () => {
-    expect(reminderFor(rdv({ myAnswer: "going", startsAt: NOW + 30 * 60000 }), NOW, fmt)!.at).toBe(NOW + 30 * 60000);
+  it("never reminds again once the hour-before time has passed", () => {
+    expect(reminderFor(rdv({ myAnswer: "going", startsAt: NOW + 30 * 60000 }), NOW, fmt)).toBeNull();
+    expect(reminderFor(rdv({ myAnswer: "going", startsAt: NOW + H }), NOW, fmt)).toBeNull();
     expect(reminderFor(rdv({ myAnswer: "going", startsAt: NOW - 1 }), NOW, fmt)).toBeNull();
+  });
+
+  it("schedules nothing new after the one-hour reminder fired for an RDV five hours out", () => {
+    const going = rdv({ myAnswer: "going", startsAt: NOW + 5 * H });
+    expect(remindersFor([going], NOW, fmt)).toHaveLength(1);
+    expect(remindersFor([going], NOW + 4 * H + 1, fmt)).toEqual([]);
   });
 
   it("has none for cant, no answer or a cancelled RDV", () => {

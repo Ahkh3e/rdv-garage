@@ -55,6 +55,7 @@ export function createRdvsController(
   const settled = new Set<string>();
   let limited = false;
   let lastSynced: string | null = null;
+  let seq = 0;
   let syncing: Promise<void> = Promise.resolve();
 
   const userId = () => {
@@ -75,17 +76,15 @@ export function createRdvsController(
     const wanted = remindersFor(state.get().rdvs, now(), formatTime);
     const key = JSON.stringify(wanted);
     if (key === lastSynced) return syncing;
-    lastSynced = key;
     syncing = syncing
       .then(async () => {
-        if (!(await deps.reminders.permitted())) return;
+        if (key === lastSynced || !(await deps.reminders.permitted())) return;
         const { add, remove } = diffReminders(wanted, await deps.reminders.list());
-        for (const key of remove) await deps.reminders.cancel(key);
+        for (const stale of remove) await deps.reminders.cancel(stale);
         for (const reminder of add) await deps.reminders.schedule(reminder);
+        lastSynced = key;
       })
-      .catch(() => {
-        lastSynced = null;
-      });
+      .catch(() => undefined);
     return syncing;
   };
 
@@ -112,6 +111,7 @@ export function createRdvsController(
     pins: mapPins as Store<MapPin[]>,
 
     async refresh() {
+      const mine = ++seq;
       const { crews, loaded } = shell.crewContext.store.get();
       const crewIds = crews.map((c) => c.id);
       if (userId() && crewIds.length === 0 && !loaded) return;
@@ -121,12 +121,13 @@ export function createRdvsController(
       }
       try {
         const rows = await shell.backend.rpc<RdvRow[]>("rdvs", "list_rdvs", { p_crew_ids: crewIds });
+        if (mine !== seq) return;
         state.set({ rdvs: rows.map(rdvFromRow), loaded: true });
         syncPins();
         void syncReminders();
         check();
       } catch {
-        state.set((s) => (s.loaded ? s : { ...s, loaded: true }));
+        if (mine === seq) state.set((s) => (s.loaded ? s : { ...s, loaded: true }));
       }
     },
 
@@ -151,6 +152,7 @@ export function createRdvsController(
     },
 
     reset() {
+      seq++;
       attempts.clear();
       settled.clear();
       limited = false;
