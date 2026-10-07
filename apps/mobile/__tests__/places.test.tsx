@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { Linking } from "react-native";
+import { Keyboard, Linking } from "react-native";
 import { ShellApp, DISCLAIMER_PLACES, type Poi } from "@rdv/core";
 import { makeBackend, makeShell, profileRow } from "./helpers";
 
@@ -134,6 +134,17 @@ describe("place search", () => {
     expect(await screen.findByText("Type at least 3 characters.")).toBeTruthy();
     await fireEvent(inputs().at(-1)!, "blur");
     await waitFor(() => expect(screen.queryByText("Type at least 3 characters.")).toBeNull());
+  });
+
+  it("dismisses the keyboard and closes the idle search panel when the map is tapped", async () => {
+    mockFiles.clear();
+    await mount();
+    await fireEvent(inputs().at(-1)!, "focus");
+    expect(await screen.findByText("Type at least 3 characters.")).toBeTruthy();
+    const dismiss = jest.spyOn(Keyboard, "dismiss");
+    await fireEvent.press(screen.getByTestId("map-view"));
+    expect(dismiss).toHaveBeenCalled();
+    dismiss.mockRestore();
   });
 
   it("keeps a Recent row tappable across the blur that comes before the press", async () => {

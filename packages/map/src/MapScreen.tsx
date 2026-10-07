@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Easing, Keyboard, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -392,6 +392,7 @@ export function MapScreen() {
           attribution
           attributionPosition={{ bottom: SHEET_OVERLAP + 6, left: 8 }}
           onDidFinishRenderingMapFully={() => refreshRoads()}
+          onPress={() => Keyboard.dismiss()}
           onLongPress={(event) => shell.mapBridge.longPress({ lat: event.nativeEvent.lngLat[1]!, lng: event.nativeEvent.lngLat[0]! })}
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
