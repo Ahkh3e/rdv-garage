@@ -5,13 +5,14 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Button, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession } from "@rdv/core";
+import { Avatar, Button, CarIcon, Glass, GlassButton, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, useShell } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
 import { PinLayer } from "./PinLayer";
+import { poisFromFeatures } from "./pois";
 import { holdHeading } from "./heading";
 import { RoadIndex, linesFromFeatures } from "./roadSnap";
 import { appendTrail, snapTrail, trailFeatures, type TrailPoint, type TrailSet } from "./trails";
-import { FLAT_PITCH, FOLLOW_CAMERA, rdvNightStyle, rdvNightStyleFlat } from "./style";
+import { FLAT_PITCH, FOLLOW_CAMERA, POI_LAYER, rdvNightStyle, rdvNightStyleFlat } from "./style";
 
 const TORONTO: [number, number] = [-79.3832, 43.6532];
 const FADE_AFTER_MS = 45000;
@@ -36,6 +37,7 @@ interface Me {
 
 export function MapScreen() {
   const focused = useIsFocused();
+  const shell = useShell();
   const navigation = useNavigation<any>();
   const session = useSession();
   const crewState = useCrewState();
@@ -120,6 +122,20 @@ export function MapScreen() {
       sub?.remove();
     };
   }, [focused]);
+
+  useEffect(
+    () =>
+      shell.mapBridge.attach({
+        queryPois: async () => poisFromFeatures((await mapRef.current?.queryRenderedFeatures({ layers: [POI_LAYER] })) ?? []),
+        flyTo: (point, target) => {
+          setFollow(false);
+          setFollowMember(false);
+          setExpanded(true);
+          camera.current?.easeTo({ center: [point.lng, point.lat], zoom: target ?? Math.max(zoom.current, JUMP_ZOOM), pitch: pitch.current, bearing: 0, duration: 700 });
+        },
+      }),
+    [shell],
+  );
 
   const lastEase = useRef(0);
   const easeSpan = useRef(0);
@@ -350,10 +366,12 @@ export function MapScreen() {
           attribution
           attributionPosition={{ bottom: SHEET_OVERLAP + 6, left: 8 }}
           onDidFinishRenderingMapFully={() => refreshRoads()}
+          onLongPress={(event) => shell.mapBridge.longPress({ lat: event.nativeEvent.lngLat[1]!, lng: event.nativeEvent.lngLat[0]! })}
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
             setMapZoom(Math.round(event.nativeEvent.zoom * 4) / 4);
             refreshRoads(event.nativeEvent.center as [number, number]);
+            shell.mapBridge.setView({ lat: event.nativeEvent.center[1]!, lng: event.nativeEvent.center[0]!, zoom: event.nativeEvent.zoom });
             // Dragging or pinching the map by hand ends follow mode; the home button brings it back.
             if (event.nativeEvent.userInteraction) {
               setFollow(false);
@@ -525,7 +543,7 @@ const styles = StyleSheet.create({
   top: { position: "absolute", top: 60, left: 16, right: 80, alignItems: "flex-start" },
   pill: { flexDirection: "row", alignItems: "center", gap: 8, height: 32, paddingHorizontal: 12, borderRadius: radii.pill },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
-  notice: { position: "absolute", top: 104, left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
+  notice: { position: "absolute", top: 152, left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
   controls: { position: "absolute", right: 16, bottom: SHEET_OVERLAP + 96, gap: 12 },
   sheet: { flex: 1, marginTop: -SHEET_OVERLAP, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, borderBottomWidth: 0 },
   handleHit: { alignItems: "center", paddingTop: 8, paddingBottom: 8 },

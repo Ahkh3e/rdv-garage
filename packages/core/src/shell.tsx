@@ -9,12 +9,13 @@ import { createNavigationContainerRef, DarkTheme, NavigationContainer } from "@r
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import type { AppConfig } from "./config";
 import type {
-  Backend, CrewContext, Handoff, CrewContextState, CrewSummary, LinkHandler, LiveState, LocationStream, MemberPosition,
+  Backend, CrewContext, Geocoder, Handoff, PlaceUi, CrewContextState, CrewSummary, LinkHandler, LiveState, LocationStream, MemberPosition,
   MenuItem, Route, SessionState, Shell, Tab,
 } from "./contracts";
 import { AppError } from "./errors";
 import { createEvents } from "./events";
 import { createPinRegistry } from "./pins";
+import { createMapBridge } from "./mapBridge";
 import { parseLink } from "./links";
 import { createStore, useStore, type Store } from "./store";
 import { DEFAULT_CAR_ICON } from "./carIcons";
@@ -84,6 +85,8 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
   // Navigation is only delivered once the signed-in screens are mounted; before that the request waits.
   let stackReady = false;
   let handoff: Handoff | null = null;
+  let geocoder: Geocoder | null = null;
+  let placeUi: PlaceUi | null = null;
 
   // Any call that comes back "suspended" signs the user out everywhere on this device.
   let suspending = false;
@@ -125,6 +128,21 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
     setHandoff(next) {
       handoff = next;
     },
+    geocoder: {
+      search: (text, bias) => (geocoder ? geocoder.search(text, bias) : Promise.reject(new AppError("geocoder_unavailable"))),
+    },
+    setGeocoder(next) {
+      geocoder = next;
+    },
+    places: {
+      openCard: (place) => placeUi?.openCard(place),
+      pick: () => (placeUi ? placeUi.pick() : Promise.resolve(null)),
+    },
+    setPlaceUi(next) {
+      placeUi = next;
+    },
+    mapBridge: createMapBridge(),
+    hasRoute: (name) => shell.routes.some((route) => route.name === name),
     tabs: [],
     routes: [],
     menu: [],

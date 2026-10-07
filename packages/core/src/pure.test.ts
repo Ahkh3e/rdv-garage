@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AppError, codeOf, messageFor } from "./errors";
 import { createEvents } from "./events";
 import { haversineMeters, msToKmh } from "./geo";
@@ -6,6 +6,7 @@ import { parseLink } from "./links";
 import { createChunkedStorage, type KeyValueStore } from "./secureStorage";
 import { createStore } from "./store";
 import { createPinRegistry } from "./pins";
+import { createMapBridge } from "./mapBridge";
 import type { MapPin } from "./contracts";
 import { formatDaySet, previousWeekStart, torontoWeekStart } from "./week";
 
@@ -135,5 +136,32 @@ describe("pin registry", () => {
     registry.press("places:1");
     registry.press("nope:1");
     expect(hit).toEqual(["places"]);
+  });
+});
+
+describe("map bridge", () => {
+  it("returns no points of interest and ignores flyTo until a map attaches", async () => {
+    const bridge = createMapBridge();
+    expect(await bridge.pois()).toEqual([]);
+    bridge.flyTo({ lat: 1, lng: 2 });
+    const flyTo = vi.fn();
+    const off = bridge.attach({ queryPois: async () => [{ name: "A", lat: 1, lng: 2, cls: "fuel", subclass: null }], flyTo });
+    expect(await bridge.pois()).toHaveLength(1);
+    bridge.flyTo({ lat: 3, lng: 4 }, 15);
+    expect(flyTo).toHaveBeenCalledWith({ lat: 3, lng: 4 }, 15);
+    off();
+    expect(await bridge.pois()).toEqual([]);
+  });
+  it("delivers long presses and view changes to subscribers", () => {
+    const bridge = createMapBridge();
+    const seen: unknown[] = [];
+    const off = bridge.onLongPress((p) => seen.push(p));
+    bridge.longPress({ lat: 1, lng: 2 });
+    off();
+    bridge.longPress({ lat: 3, lng: 4 });
+    expect(seen).toEqual([{ lat: 1, lng: 2 }]);
+    expect(bridge.view.get()).toBeNull();
+    bridge.setView({ lat: 1, lng: 2, zoom: 12 });
+    expect(bridge.view.get()).toEqual({ lat: 1, lng: 2, zoom: 12 });
   });
 });

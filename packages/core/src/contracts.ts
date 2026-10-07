@@ -156,6 +156,58 @@ export interface Handoff {
   openDirections(target: DirectionsTarget): Promise<void>;
 }
 
+// ---- Places, geocoding and the map bridge ------------------------------------
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+}
+
+export interface Place extends GeoPoint {
+  name: string;
+  kind: string;
+  address: string | null;
+}
+
+export interface Geocoder {
+  // Only the typed text and a coarse bias point may leave the device (decision 0024).
+  search(text: string, bias: GeoPoint | null): Promise<Place[]>;
+}
+
+export interface PlaceUi {
+  // Shows the place card over the map and moves the map there.
+  openCard(place: Place): void;
+  // Opens the place picker; resolves with the chosen place, or null if dismissed.
+  pick(): Promise<Place | null>;
+}
+
+export interface MapView extends GeoPoint {
+  zoom: number;
+}
+
+// A point of interest as drawn in the vector tiles: `cls` and `subclass` are the tile's own class values.
+export interface Poi extends GeoPoint {
+  name: string;
+  cls: string;
+  subclass: string | null;
+}
+
+export interface MapController {
+  queryPois(): Promise<Poi[]>;
+  flyTo(point: GeoPoint, zoom?: number): void;
+}
+
+export interface MapBridge {
+  // Center and zoom of the map on screen, null until the map has reported.
+  view: Store<MapView | null>;
+  attach(controller: MapController | null): Unsubscribe;
+  setView(view: MapView): void;
+  // Points of interest currently rendered, read on the device. Empty when no map is attached.
+  pois(): Promise<Poi[]>;
+  flyTo(point: GeoPoint, zoom?: number): void;
+  longPress(point: GeoPoint): void;
+  onLongPress(fn: (point: GeoPoint) => void): Unsubscribe;
+}
+
 // ---- Shell and modules --------------------------------------------------------
 export interface Tab {
   id: string;
@@ -196,6 +248,12 @@ export interface Shell {
   pins: PinRegistry;
   handoff: Handoff;
   setHandoff(handoff: Handoff): void;
+  geocoder: Geocoder;
+  setGeocoder(geocoder: Geocoder): void;
+  places: PlaceUi;
+  setPlaceUi(ui: PlaceUi): void;
+  mapBridge: MapBridge;
+  hasRoute(name: string): boolean;
   addTab(tab: Tab): void;
   addRoute(route: Route): void;
   addFlag(name: string, defaultValue: boolean): void;
