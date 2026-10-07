@@ -74,7 +74,7 @@ export function CrewDetail({ navigation, route }: { navigation: any; route: { pa
             <Row
               title={`@${m.handle}${m.userId === me ? " (you)" : ""}`}
               subtitle={`${m.role === "owner" ? "Owner" : "Member"}${m.live ? "  ·  Live now" : ""}`}
-              left={<Avatar handle={m.handle} path={m.avatarPath} ring={m.live ? colors.accent : undefined} />}
+              left={<Avatar handle={m.handle} path={m.avatarPath} ring={m.live ? colors.accentBright : undefined} />}
               right={isOwner && m.userId !== me ? <Ionicons name="ellipsis-horizontal" size={20} color={colors.muted} /> : undefined}
               onPress={isOwner && m.userId !== me ? () => memberActions(m.userId, m.handle) : undefined}
             />

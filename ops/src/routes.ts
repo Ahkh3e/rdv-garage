@@ -1,4 +1,5 @@
 import { haversineMeters } from "@rdv/core/geo";
+import { ROADS } from "./roads";
 
 export type RouteStyle = "city" | "highway";
 
@@ -7,18 +8,11 @@ export interface Point {
   lng: number;
 }
 
-// Rough loops around Toronto. City: downtown streets. Highway: Gardiner and the DVP northbound.
+// Road-following loops around Toronto, snapped to OpenStreetMap roads (scripts/make-routes.mjs). City: downtown streets.
+// Highway: the Gardiner and the DVP northbound.
 export const ROUTES: Record<RouteStyle, Point[]> = {
-  city: [
-    { lat: 43.6426, lng: -79.3871 }, { lat: 43.6489, lng: -79.3815 }, { lat: 43.6532, lng: -79.3832 },
-    { lat: 43.6629, lng: -79.3957 }, { lat: 43.6677, lng: -79.3948 }, { lat: 43.6702, lng: -79.3860 },
-    { lat: 43.6620, lng: -79.3760 }, { lat: 43.6561, lng: -79.3802 }, { lat: 43.6480, lng: -79.3790 },
-  ],
-  highway: [
-    { lat: 43.6355, lng: -79.4200 }, { lat: 43.6390, lng: -79.3700 }, { lat: 43.6555, lng: -79.3550 },
-    { lat: 43.7000, lng: -79.3400 }, { lat: 43.7500, lng: -79.3300 }, { lat: 43.7000, lng: -79.3420 },
-    { lat: 43.6555, lng: -79.3560 }, { lat: 43.6390, lng: -79.3710 },
-  ],
+  city: [...ROADS.city],
+  highway: [...ROADS.highway],
 };
 
 export function mulberry32(seed: number): () => number {

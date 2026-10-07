@@ -44,7 +44,7 @@ export async function startUpdates(crewNames: string[]): Promise<void> {
     foregroundService: {
       notificationTitle: "RDV Garage is live",
       notificationBody: crewNames.length ? `Visible to ${crewNames.join(", ")}` : "Sharing your location",
-      notificationColor: "#FF4F1F",
+      notificationColor: "#2F6FF2",
     },
   });
 }

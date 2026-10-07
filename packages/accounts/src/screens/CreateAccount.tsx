@@ -12,7 +12,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function Check({ checked, onToggle, children, testID }: { checked: boolean; onToggle: () => void; children: React.ReactNode; testID?: string }) {
   return (
     <Pressable testID={testID} accessibilityRole="checkbox" accessibilityState={{ checked }} onPress={onToggle} style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
-      <Ionicons name={checked ? "checkbox" : "square-outline"} size={24} color={checked ? colors.accent : colors.muted} />
+      <Ionicons name={checked ? "checkbox" : "square-outline"} size={24} color={checked ? colors.accentBright : colors.muted} />
       <View style={{ flex: 1 }}>{children}</View>
     </Pressable>
   );
@@ -77,7 +77,7 @@ export function CreateAccount({ navigation, route }: { navigation: any; route: {
         </Check>
         <Check testID="create-terms" checked={terms} onToggle={() => setTerms(!terms)}>
           <Text>
-            I have read and accept the safety terms. <Text color={colors.accent} onPress={() => setReadTerms(true)}>Read them</Text>
+            I have read and accept the safety terms. <Text color={colors.accentBright} onPress={() => setReadTerms(true)}>Read them</Text>
           </Text>
         </Check>
       </View>

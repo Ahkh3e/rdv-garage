@@ -145,10 +145,10 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   podium: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingVertical: 20, paddingHorizontal: 12, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.s1 },
   podiumCol: { flex: 1, alignItems: "center", gap: 6 },
-  bar: { width: 24, height: 2, borderRadius: 1, backgroundColor: colors.accent },
+  bar: { width: 24, height: 2, borderRadius: 1, backgroundColor: colors.accentBright },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, minHeight: 56 },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
-  meBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 2, backgroundColor: colors.accent },
+  meBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 2, backgroundColor: colors.accentBright },
   rank: { width: 24, fontSize: 15 },
   unit: { width: 32 },
 });

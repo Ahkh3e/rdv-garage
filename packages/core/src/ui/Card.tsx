@@ -42,6 +42,6 @@ export function Divider() {
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.s1, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, overflow: "hidden" },
+  card: { backgroundColor: colors.surface, borderRadius: radii.xl, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, overflow: "hidden" },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, minHeight: 64, paddingVertical: 10 },
 });

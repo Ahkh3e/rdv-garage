@@ -9,7 +9,9 @@ jest.mock("@maplibre/maplibre-react-native", () => {
     return null;
   });
   const ViewAnnotation = (props: any) => React.createElement(View, { testID: `marker-${props.id}` }, props.children);
-  return { __esModule: true, Map, Camera, ViewAnnotation };
+  const GeoJSONSource = (props: any) => React.createElement(View, { testID: "trail-source" }, props.children);
+  const Layer = () => null;
+  return { __esModule: true, Map, Camera, ViewAnnotation, GeoJSONSource, Layer };
 });
 
 jest.mock("expo-location", () => ({

@@ -8,7 +8,7 @@ import { Text } from "./Text";
 export function Spinner() {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
-      <ActivityIndicator color={colors.accent} />
+      <ActivityIndicator color={colors.accentBright} />
     </View>
   );
 }

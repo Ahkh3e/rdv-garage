@@ -9,7 +9,7 @@ const config: ExpoConfig = {
   version: "0.0.1",
   orientation: "portrait",
   userInterfaceStyle: "dark",
-  backgroundColor: "#0A0A0B",
+  backgroundColor: "#080A0F",
   icon: "./assets/icon.png",
   ios: {
     supportsTablet: false,
@@ -29,7 +29,7 @@ const config: ExpoConfig = {
   android: {
     package: "app.rdvgarage.mobile",
     adaptiveIcon: {
-      backgroundColor: "#0A0A0B",
+      backgroundColor: "#080A0F",
       foregroundImage: "./assets/android-icon-foreground.png",
       backgroundImage: "./assets/android-icon-background.png",
       monochromeImage: "./assets/android-icon-monochrome.png",
@@ -55,7 +55,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-secure-store",
     "expo-font",
-    ["expo-splash-screen", { image: "./assets/splash-icon.png", imageWidth: 200, backgroundColor: "#0A0A0B" }],
+    ["expo-splash-screen", { image: "./assets/splash-icon.png", imageWidth: 200, backgroundColor: "#080A0F" }],
     "expo-dev-client",
     [
       "expo-location",

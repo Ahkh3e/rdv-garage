@@ -1,4 +1,4 @@
-import { haversineMeters, msToKmh } from "@rdv/core/geo";
+import { bearingDegrees, haversineMeters, msToKmh } from "@rdv/core/geo";
 
 export interface Fix {
   lat: number;
@@ -25,6 +25,10 @@ export interface EngineDeps {
 export const MOVING_BROADCAST_MS = 3000;
 export const STATIONARY_BROADCAST_MS = 15000;
 export const TICK_MS = 30000;
+// Extra broadcast when the direction changes, so the other phones can draw corners instead of cutting across them.
+export const CORNER_DEGREES = 20;
+export const CORNER_MIN_MS = 1000;
+export const CORNER_MIN_M = 12;
 const MOVING_SPEED_MS = 1;
 const MAX_JUMP_M = 1500;
 // A parked car stops producing fixes, so "moving" must expire. After this long without a fix the member counts as stationary.
@@ -42,6 +46,7 @@ export class LiveEngine {
   private distanceM = 0;
   private lastFix: Fix | null = null;
   private lastBroadcast = 0;
+  private sent: { lat: number; lng: number }[] = [];
   private lastTick = 0;
   private tickCount = 0;
   private moving = false;
@@ -70,6 +75,7 @@ export class LiveEngine {
     this.distanceM = 0;
     this.lastFix = null;
     this.lastBroadcast = 0;
+    this.sent = [];
     this.lastTick = now;
     this.tickCount = 0;
     this.moving = false;
@@ -104,14 +110,24 @@ export class LiveEngine {
     this.deps.publishSelf({ lat: fix.lat, lng: fix.lng, heading: fix.heading, ts: fix.ts, crewIds: this.crewIds });
 
     const interval = this.moving ? MOVING_BROADCAST_MS : STATIONARY_BROADCAST_MS;
-    if (fix.ts - this.lastBroadcast >= interval) {
+    if (fix.ts - this.lastBroadcast >= interval || (this.moving && fix.ts - this.lastBroadcast >= CORNER_MIN_MS && this.turned(fix))) {
       this.lastBroadcast = fix.ts;
+      this.sent = [...this.sent.slice(-1), { lat: fix.lat, lng: fix.lng }];
       for (const crewId of this.crewIds) {
         // Speed is never broadcast: it is shown after the session, not live (decision 0007).
         this.deps.broadcast(crewId, "pos", { user_id: this.deps.userId, lat: fix.lat, lng: fix.lng, heading: fix.heading, ts: fix.ts });
       }
     }
     void this.maybeTick(this.deps.now());
+  }
+
+  // True when the path from the last broadcast point to this fix points a clearly different way than the segment before it.
+  private turned(fix: Fix): boolean {
+    if (this.sent.length < 2) return false;
+    const [before, last] = this.sent as [{ lat: number; lng: number }, { lat: number; lng: number }];
+    if (haversineMeters(last, fix) < CORNER_MIN_M || haversineMeters(before, last) < CORNER_MIN_M) return false;
+    const change = Math.abs(bearingDegrees(last, fix) - bearingDegrees(before, last));
+    return Math.min(change, 360 - change) >= CORNER_DEGREES;
   }
 
   // A parked car stops producing location fixes, so nothing would be broadcast. Called on a short timer: when the

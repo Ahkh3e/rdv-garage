@@ -3,7 +3,7 @@ import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from "react-nat
 import { colors } from "../theme";
 
 // A dot with a soft halo that breathes. The halo stays still when Reduce Motion is on.
-export function PulseDot({ size = 8, halo = 2.6, color = colors.accent }: { size?: number; halo?: number; color?: string }) {
+export function PulseDot({ size = 8, halo = 2.6, color = colors.accentBright }: { size?: number; halo?: number; color?: string }) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     let loop: Animated.CompositeAnimation | null = null;

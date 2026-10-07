@@ -47,6 +47,7 @@ function MemberMarkerBase({ handle, avatarPath, styleIndex, stale }: Props) {
         </View>
       </View>
       <View style={styles.label}>
+        <View style={[styles.tintDot, { backgroundColor: tint }]} />
         <Text variant="caption" numberOfLines={1} style={{ color: colors.text }}>{handle}</Text>
       </View>
     </View>
@@ -78,11 +79,12 @@ const styles = StyleSheet.create({
   ring: { width: SIZE, height: SIZE, borderWidth: 3, alignItems: "center", justifyContent: "center", backgroundColor: colors.raised, overflow: "hidden" },
   photo: { width: SIZE - 8, height: SIZE - 8, borderRadius: (SIZE - 8) / 2 },
   initial: { alignItems: "center", justifyContent: "center", backgroundColor: colors.raised },
-  label: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: "rgba(10,10,11,0.82)", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, maxWidth: 110 },
+  label: { marginTop: 6, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, maxWidth: 120 },
+  tintDot: { width: 6, height: 6, borderRadius: 3 },
   selfWrap: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
   arrowWrap: { position: "absolute", alignItems: "center", justifyContent: "center", width: 56, height: 56 },
   arrow: {
     width: 0, height: 0, borderLeftWidth: 11, borderRightWidth: 11, borderBottomWidth: 26,
-    borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: colors.accent,
+    borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: colors.accentBright,
   },
 });

@@ -28,6 +28,14 @@ async function mount(backend: ReturnType<typeof makeBackend>) {
   return shell;
 }
 
+// The app opens on the Map, so tests about the Crews screen switch to it first.
+async function mountOnCrews(backend: ReturnType<typeof makeBackend>) {
+  const shell = await mount(backend);
+  const tabs = await screen.findAllByText("Crews");
+  await fireEvent.press(tabs[0]!);
+  return shell;
+}
+
 describe("signed out", () => {
   it("shows the welcome screen with invite and sign in", async () => {
     await mount(makeBackend(null));
@@ -125,8 +133,8 @@ describe("signed in", () => {
       ...extra,
     });
 
-  it("opens on Crews with the tab bar and lists the crews with live counts", async () => {
-    await mount(signedIn());
+  it("opens on the map with the tab bar, and Crews lists the crews with live counts", async () => {
+    await mountOnCrews(signedIn());
     expect(await screen.findByText("Night Cruisers")).toBeTruthy();
     expect(screen.getByText(/2 members/)).toBeTruthy();
     expect(screen.getByText(/1 live/)).toBeTruthy();
@@ -134,7 +142,7 @@ describe("signed in", () => {
   });
 
   it("shows an empty state with create and join when there are no crews", async () => {
-    await mount(signedIn({ "crews.list_my_crews": () => [] }));
+    await mountOnCrews(signedIn({ "crews.list_my_crews": () => [] }));
     expect(await screen.findByText("No crews yet")).toBeTruthy();
     expect(screen.getByTestId("crews-create")).toBeTruthy();
     expect(screen.getByTestId("crews-join")).toBeTruthy();
@@ -142,7 +150,7 @@ describe("signed in", () => {
 
   it("toggling a crew switches it on or off and saves the selection", async () => {
     const backend = signedIn();
-    await mount(backend);
+    await mountOnCrews(backend);
     await screen.findByText("Night Cruisers");
     const toggle = screen.getByLabelText("Show Night Cruisers");
     await fireEvent(toggle, "valueChange", false);
@@ -151,7 +159,7 @@ describe("signed in", () => {
 
   it("creates a crew with the typed name", async () => {
     const backend = signedIn({ "crews.create_crew": () => [{ id: "crew-2", link_code: "ABCDEFGH23456789" }] });
-    await mount(backend);
+    await mountOnCrews(backend);
     await fireEvent.press(await screen.findByTestId("crews-create"));
     await fireEvent.changeText(await screen.findByTestId("crew-name"), "Weekend Run");
     await fireEvent.press(screen.getByTestId("crew-create-submit"));
@@ -234,7 +242,7 @@ describe("password reset links", () => {
 
   it("accepts the link after a reset was requested here, then opens the new password screen", async () => {
     const backend = makeBackend("user-1", { "accounts.my_profile": () => [profileRow()], "crews.list_my_crews": () => [] });
-    const shell = await mount(backend);
+    const shell = await mountOnCrews(backend);
     await screen.findByText("No crews yet");
     mockStore.set("rdv.reset.requested", String(Date.now()));
     await act(async () => shell.dispatchLink(link));
@@ -256,7 +264,7 @@ describe("password reset links", () => {
     const { AppError } = require("@rdv/core");
     const backend = makeBackend("user-1", { "accounts.my_profile": () => [profileRow()], "crews.list_my_crews": () => [] });
     (backend.auth.completePasswordReset as jest.Mock).mockRejectedValueOnce(new AppError("revoke_failed"));
-    const shell = await mount(backend);
+    const shell = await mountOnCrews(backend);
     await screen.findByText("No crews yet");
     mockStore.set("rdv.reset.requested", String(Date.now()));
     await act(async () => shell.dispatchLink(link));
@@ -280,7 +288,7 @@ describe("leaderboard crew switching", () => {
           ? new Promise((resolve) => (releaseA = resolve))
           : [{ rank: 1, user_id: "u2", handle: "bravodriver", avatar_path: null, top_speed_kmh: 150, set_on: "2025-10-08" }],
     });
-    await mount(backend);
+    await mountOnCrews(backend);
     await screen.findByText("Alpha");
     await fireEvent.press(screen.getAllByText("Board")[0]!);
     await screen.findByText("Top speed");
