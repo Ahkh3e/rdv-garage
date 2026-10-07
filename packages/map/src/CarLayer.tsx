@@ -71,7 +71,7 @@ export function CarLayer({ cars, zoom }: { cars: CarInput[]; zoom: number }) {
   const placed = cars.map((car) => ({ ...car, ...(current(car.id) ?? { lng: car.lng, lat: car.lat, heading: car.heading }) }));
   const features = useMemo(
     () => carFeatures(placed.map((c): Car3D => ({ id: c.id, lng: c.lng, lat: c.lat, heading: c.heading, icon: carIconKey(c.icon), color: c.color, stale: c.stale })), zoom),
-    [placed.map((c) => `${c.id}:${c.lng.toFixed(6)}:${c.lat.toFixed(6)}:${c.heading.toFixed(0)}:${c.stale ? 1 : 0}`).join("|"), zoom], // eslint-disable-line react-hooks/exhaustive-deps
+    [placed.map((c) => `${c.id}:${c.lng.toFixed(6)}:${c.lat.toFixed(6)}:${c.heading.toFixed(0)}:${c.stale ? 1 : 0}:${c.icon}:${c.color}`).join("|"), zoom], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const data = useMemo<GeoJSON.FeatureCollection>(() => ({ type: "FeatureCollection", features }), [features]);
