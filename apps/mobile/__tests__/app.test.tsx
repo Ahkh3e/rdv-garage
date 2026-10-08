@@ -400,7 +400,27 @@ describe("crew admins", () => {
     await fireEvent.press(screen.getByText(/^@mate/));
     expect(alert).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByText("@newbie"));
-    expect(buttons(alert)).toEqual(["Remove member", "Cancel"]);
+    expect(buttons(alert)).toEqual(["Remove from crew", "Cancel"]);
+  });
+
+  it("words the remove and transfer confirmations for who is affected", async () => {
+    const alert = await open("owner");
+    await fireEvent.press(screen.getByText("@newbie"));
+    const press = (text: string) => (alert.mock.calls.at(-1)![2] as { text: string; onPress?: () => void }[]).find((b) => b.text === text)!.onPress!();
+    press("Remove from crew");
+    expect(alert.mock.calls.at(-1)!.slice(0, 2)).toEqual(["Remove from crew", "Remove @newbie from the crew?"]);
+    expect((alert.mock.calls.at(-1)![2] as { text: string }[]).map((b) => b.text)).toEqual(["Cancel", "Remove from crew"]);
+    alert.mockClear();
+    await fireEvent.press(screen.getByText("@newbie"));
+    press("Make owner");
+    expect(alert.mock.calls.at(-1)![1]).toBe("@newbie becomes the owner of Night Cruisers. You become a regular member, not an admin.");
+  });
+
+  it("uses the same remove wording for an admin", async () => {
+    const alert = await open("admin", "user-2");
+    await fireEvent.press(screen.getByText("@newbie"));
+    (alert.mock.calls.at(-1)![2] as { text: string; onPress?: () => void }[]).find((b) => b.text === "Remove from crew")!.onPress!();
+    expect(alert.mock.calls.at(-1)!.slice(0, 2)).toEqual(["Remove from crew", "Remove @newbie from the crew?"]);
   });
 
   it("gives a member no controls", async () => {

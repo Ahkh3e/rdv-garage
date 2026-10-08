@@ -50,10 +50,10 @@ export function CrewDetail({ navigation, route }: { navigation: any; route: { pa
     if (!canManage(userId, role)) return;
     const rpc = (fn: string) => () => run(() => shell.backend.rpc("crews", fn, { p_crew: crew.id, p_user: userId }));
     Alert.alert(`@${handle}`, undefined, [
-      ...(isOwner ? [{ text: "Make owner", onPress: () => confirm("Transfer ownership?", `@${handle} becomes the owner and you become a member.`, rpc("transfer_ownership"), "Transfer") }] : []),
+      ...(isOwner ? [{ text: "Make owner", onPress: () => confirm("Transfer ownership?", `@${handle} becomes the owner of ${crew.name}. You become a regular member, not an admin.`, rpc("transfer_ownership"), "Transfer") }] : []),
       ...(isOwner && role === "member" ? [{ text: "Add admin", onPress: () => confirm("Add admin?", `@${handle} can remove members, cancel RDVs and remove pins for this crew.`, rpc("promote_admin"), "Add admin") }] : []),
       ...(isOwner && role === "admin" ? [{ text: "Remove admin", onPress: () => confirm("Remove admin?", `@${handle} becomes a member.`, rpc("demote_admin"), "Remove admin") }] : []),
-      { text: isOwner ? "Remove from crew" : "Remove member", style: "destructive" as const, onPress: () => confirm("Remove member?", `@${handle} will no longer see this crew.`, rpc("remove_member"), "Remove") },
+      { text: "Remove from crew", style: "destructive" as const, onPress: () => confirm("Remove from crew", `Remove @${handle} from the crew?`, rpc("remove_member"), "Remove from crew") },
       { text: "Cancel", style: "cancel" as const },
     ]);
   };
