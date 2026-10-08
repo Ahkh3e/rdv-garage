@@ -69,6 +69,8 @@ const MESSAGES: Record<string, string> = {
   room_closed: "This room is closed. The RDV has ended.",
   room_fixed: "That can't be changed for this kind of room.",
   cannot_moderate_host: "The host can't be removed from their RDV room.",
+  voice_revoked: "Voice is off for you in this crew.",
+  walkie_unavailable: "Voice isn't available right now. You can still read and send messages.",
   rate_limited: "Too many attempts. Try again later.",
   unauthenticated: "Sign in to continue.",
   registration_failed: "We couldn't create your account. Try again.",

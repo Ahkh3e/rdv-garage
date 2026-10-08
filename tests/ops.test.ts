@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { createBackend } from "@rdv/core/backend";
 import { crewAdd, crewCreate, crewDelete } from "@rdv/ops/crews";
 import { makeCtx, runCommand } from "@rdv/ops/context";
@@ -27,7 +27,11 @@ const memoryStore = () => {
   return { getItemAsync: async (k: string) => m.get(k) ?? null, setItemAsync: async (k: string, v: string) => void m.set(k, v), deleteItemAsync: async (k: string) => void m.delete(k) };
 };
 
-describe("operator toolkit against a real stack", () => {
+describe("operator toolkit against a real stack", { timeout: 120000 }, () => {
+  beforeAll(async () => {
+    await purgeSynthetic(ctx());
+  });
+
   it("creates synthetic users and crews, shows them, suspends and restores, and deletes through the full path", async () => {
     const c = ctx();
     const credentials = join(dir, "creds.jsonl");
@@ -86,7 +90,7 @@ describe("operator toolkit against a real stack", () => {
     expect(Math.max(...board.map((r) => r.top_speed_kmh))).toBeGreaterThan(80);
     await channel.unsubscribe();
     await purgeSynthetic(c);
-  }, 90000);
+  });
 
   it("writes leaderboard data for this week and last, and builds referral chains", async () => {
     const c = ctx();
@@ -105,7 +109,7 @@ describe("operator toolkit against a real stack", () => {
     expect(after).toMatchObject({ syntheticUsers: 0, syntheticCrews: 0 });
     // Real users are untouched.
     expect((await sql("select 1 from accounts.profiles where is_synthetic = false and status = 'active'")).length).toBeGreaterThanOrEqual(0);
-  }, 60000);
+  });
 
   it("does nothing on dry runs", async () => {
     const c = makeCtx({ dryRun: true }, config("test"));

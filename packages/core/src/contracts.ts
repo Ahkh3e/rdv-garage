@@ -73,6 +73,8 @@ export interface CrewMember {
   carIcon: string;
   role: CrewRole;
   live: boolean;
+  // Voice is off for this member in this crew. Known only to moderators and to the member.
+  voiceOff?: boolean;
 }
 
 export interface CrewSummary {

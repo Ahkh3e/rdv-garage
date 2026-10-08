@@ -18,12 +18,13 @@ const config: ExpoConfig = {
     // Needed so the secure store (keychain) works in simulator builds as well as device builds.
     entitlements: { "keychain-access-groups": ["$(AppIdentifierPrefix)app.rdvgarage.mobile"] },
     infoPlist: {
-      UIBackgroundModes: ["location"],
+      UIBackgroundModes: ["location", "audio", "voip"],
       LSApplicationQueriesSchemes: ["waze", "comgooglemaps"],
       NSLocationWhenInUseUsageDescription: "RDV Garage shows you on the map and follows you while you drive.",
       NSLocationAlwaysAndWhenInUseUsageDescription:
         "RDV Garage shares your live position with the crews you choose, even when the app is in the background, but only while you are live.",
       NSPhotoLibraryUsageDescription: "Choose a profile photo.",
+      NSMicrophoneUsageDescription: "Rendezview uses the microphone only while you hold Talk in a room, so the people in the room can hear you.",
       ITSAppUsesNonExemptEncryption: false,
     },
   },
@@ -42,6 +43,9 @@ const config: ExpoConfig = {
       "FOREGROUND_SERVICE",
       "FOREGROUND_SERVICE_LOCATION",
       "POST_NOTIFICATIONS",
+      "RECORD_AUDIO",
+      "MODIFY_AUDIO_SETTINGS",
+      "FOREGROUND_SERVICE_MICROPHONE",
     ],
     predictiveBackGestureEnabled: false,
     intentFilters: [
@@ -74,6 +78,8 @@ const config: ExpoConfig = {
     ["expo-image-picker", { photosPermission: "Choose a profile photo." }],
     "@maplibre/maplibre-react-native",
     "./plugins/withMapsQueries",
+    "@livekit/react-native-expo-plugin",
+    "./plugins/withWalkie",
   ],
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321",

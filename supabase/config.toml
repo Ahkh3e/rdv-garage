@@ -428,3 +428,10 @@ verify_jwt = true
 
 [functions.record_arrival]
 verify_jwt = true
+
+[functions.walkie_token]
+verify_jwt = true
+
+# Called by the database with a shared secret, not by a signed-in user.
+[functions.walkie_kick]
+verify_jwt = false
