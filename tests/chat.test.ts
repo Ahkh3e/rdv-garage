@@ -406,6 +406,17 @@ describe("moderation by role", () => {
       expect(member).toBeTruthy();
     });
 
+    it("returns one room for concurrent opens and keeps a blocked member blocked", async () => {
+      const { host, member, rdv } = await rdvSetup();
+      await rsvp(member, rdv, "going");
+      const ids = await Promise.all([1, 2, 3, 4].map(() => chatOk<string>(host, "open_rdv_room", { p_rdv: rdv })));
+      expect(new Set(ids).size).toBe(1);
+      expect(await sql("select 1 from chat.rooms where rdv_id = $1", [rdv])).toHaveLength(1);
+      await chatOk(host, "remove_room_member", { p_room: ids[0], p_user: member.id });
+      expect(await chatOk<string>(host, "open_rdv_room", { p_rdv: rdv })).toBe(ids[0]);
+      expect((await chat(member, "list_messages", { p_room: ids[0] })).error).toBe("not_room_member");
+    });
+
     it("applies the moderation rules as host, admin, owner, member and non-member", async () => {
       const { host, owner, admin, member, member2, stranger, rdv } = await rdvSetup();
       for (const u of [member, member2, admin]) await rsvp(u, rdv, "going");
@@ -553,7 +564,7 @@ describe("inbox channel", () => {
     const sent = await sendOk(owner, room, "hello inbox");
     for (let i = 0; i < 40 && mine.events.length === 0; i++) await sleep(100);
     expect(mine.events).toHaveLength(1);
-    expect(mine.events[0]).toMatchObject({ room_id: room, message_id: sent.id, sender_id: owner.id, handle: owner.handle, text: "hello inbox" });
+    expect(mine.events[0]).toMatchObject({ room_id: room, message_id: sent.id, sender_id: owner.id, handle: owner.handle, text: "hello inbox", avatar_path: null, car_icon: "gt" });
     expect(outsider.events).toEqual([]);
     expect(spy.events).toEqual([]);
     await Promise.all([mine.stop(), outsider.stop(), spy.stop()]);
@@ -578,5 +589,24 @@ describe("terms", () => {
     await callOk(u.client, "accounts", "accept_terms", { p_version: "v2" });
     const [me] = await callOk<{ terms_version: string }[]>(u.client, "accounts", "my_profile");
     expect(me!.terms_version).toBe("v2");
+  });
+
+  it("refuses chat writes until a non-synthetic person accepts the current version", async () => {
+    const { owner, member, crew, room } = await setup();
+    const rdvHost = await createUser();
+    await joinCrew(rdvHost, crew.link_code);
+    const rdv = await createRdv(rdvHost, [crew.id]);
+    const people = [member, rdvHost];
+    for (const u of people) await sql("update accounts.profiles set is_synthetic = false where id = $1", [u.id]);
+    expect((await send(member, room, "hi")).error).toBe("terms_required");
+    expect((await chat(member, "create_room", { p_name: "Late night", p_member_ids: [] })).error).toBe("terms_required");
+    const own = await chatOk<string>(owner, "create_room", { p_name: "Owner room", p_member_ids: [member.id] });
+    expect((await chat(member, "add_room_member", { p_room: own, p_user: owner.id })).error).toBe("terms_required");
+    expect((await chat(rdvHost, "open_rdv_room", { p_rdv: rdv })).error).toBe("terms_required");
+    await callOk(member.client, "accounts", "accept_terms", { p_version: "v2" });
+    await callOk(rdvHost.client, "accounts", "accept_terms", { p_version: "v2" });
+    expect((await send(member, room, "hi")).error).toBeNull();
+    expect((await chat(member, "create_room", { p_name: "Late night", p_member_ids: [] })).error).toBeNull();
+    expect((await chat(rdvHost, "open_rdv_room", { p_rdv: rdv })).error).toBeNull();
   });
 });
