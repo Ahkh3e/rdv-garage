@@ -79,9 +79,19 @@ describe("search handler", () => {
   const feature = { geometry: { coordinates: [-79.38, 43.65] }, properties: { name: "CN Tower", osm_value: "tower" } };
   const photon = (res: () => Response) => {
     const urls: string[] = [];
-    const doFetch = (async (url: string) => (urls.push(url), res())) as unknown as typeof fetch;
-    return { urls, doFetch };
+    const sent: Array<Record<string, string>> = [];
+    const doFetch = (async (url: string, init?: { headers?: Record<string, string> }) => (urls.push(url), sent.push(init?.headers ?? {}), res())) as unknown as typeof fetch;
+    return { urls, sent, doFetch };
   };
+
+  it("sends the access key to a self-hosted geocoder only when one is configured", async () => {
+    const withKey = photon(() => new Response(JSON.stringify({ features: [feature] })));
+    await searchPlaces({ text: "cn tower" }, "http://photon.test", withKey.doFetch, undefined, "k-123");
+    expect(withKey.sent[0]?.["X-Photon-Key"]).toBe("k-123");
+    const without = photon(() => new Response(JSON.stringify({ features: [feature] })));
+    await searchPlaces({ text: "cn tower" }, "http://photon.test", without.doFetch);
+    expect(Object.keys(without.sent[0] ?? {})).not.toContain("X-Photon-Key");
+  });
 
   it("forwards only q, lat and lon with a coarsened bias", async () => {
     const { urls, doFetch } = photon(() => new Response(JSON.stringify({ features: [feature] })));

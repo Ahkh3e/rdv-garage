@@ -45,6 +45,7 @@ export async function searchPlaces(
   photonBase: string,
   doFetch: typeof fetch = fetch,
   maxBytes = MAX_RESPONSE_BYTES,
+  photonKey?: string,
 ): Promise<Outcome> {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { status: 400, body: { error: "invalid_request" } };
   const input = body as Record<string, unknown>;
@@ -53,7 +54,7 @@ export async function searchPlaces(
   const unavailable = { status: 502, body: { error: "search_unavailable" } };
   try {
     const res = await doFetch(photonUrl(photonBase, text, parseBias(input.bias)), {
-      headers: { "User-Agent": "Rendezview-place-search", Accept: "application/json" },
+      headers: { "User-Agent": "Rendezview-place-search", Accept: "application/json", ...(photonKey ? { "X-Photon-Key": photonKey } : {}) },
       signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return unavailable;
