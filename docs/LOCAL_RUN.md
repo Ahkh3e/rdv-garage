@@ -98,3 +98,5 @@ Real walkie-talkie audio (needs a LiveKit project and a development build with t
 - Map blank on iOS: the map is MapLibre with OpenFreeMap tiles and needs no key; check the simulator has network access.
 - JS changes do not show up on the simulator: restart Metro with `npx expo start --dev-client --clear`, then reopen `app.rdvgarage.mobile://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081` on each simulator. Native changes (a new native library) need a rebuild.
 - Last resort for seeing screens without a native build: a browser preview target with a stubbed map (not the real app).
+
+To run on your own iPhone with a free Apple ID, see "Install on your own iPhone with a free Apple ID" in `docs/SETUP.md`.
