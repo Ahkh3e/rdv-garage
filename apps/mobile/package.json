@@ -9,6 +9,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@maplibre/maplibre-react-native": "^11.5.0",
     "@rdv/accounts": "workspace:*",
+    "@rdv/chat": "workspace:*",
     "@rdv/core": "workspace:*",
     "@rdv/crews": "workspace:*",
     "@rdv/leaderboard": "workspace:*",

@@ -28,6 +28,9 @@ importers:
       '@rdv/accounts':
         specifier: workspace:*
         version: link:../../packages/accounts
+      '@rdv/chat':
+        specifier: workspace:*
+        version: link:../../packages/chat
       '@rdv/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -200,6 +203,19 @@ importers:
         version: 3.2.7(@types/node@24.19.1)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
 
   packages/accounts:
+    dependencies:
+      '@rdv/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.19.1)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/chat:
     dependencies:
       '@rdv/core':
         specifier: workspace:*

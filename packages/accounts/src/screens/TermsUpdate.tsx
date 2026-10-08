@@ -1,5 +1,5 @@
 import { View } from "react-native";
-import { Button, Screen, TERMS_VERSION, Text, useAction, useShell } from "@rdv/core";
+import { Button, Screen, TERMS_VERSION, Text, colors, useAction, useShell } from "@rdv/core";
 import { LegalText } from "./Legal";
 
 export function TermsUpdate() {
@@ -15,7 +15,7 @@ export function TermsUpdate() {
       <View style={{ flex: 1 }}>
         <LegalText />
       </View>
-      {accept.error ? <Text color="#FF453A">{accept.error}</Text> : null}
+      {accept.error ? <Text color={colors.danger}>{accept.error}</Text> : null}
       <Button title="Accept and continue" testID="terms-accept" loading={accept.loading} onPress={() => accept.run()} />
       <Button title="Sign out" variant="ghost" onPress={() => void shell.backend.auth.signOut()} />
     </Screen>
