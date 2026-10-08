@@ -7,7 +7,7 @@ Run the whole product on one Mac: backend, link pages, operator toolkit, and the
 | Need | Check |
 |---|---|
 | Xcode 26.4 or newer (Expo SDK 57) | `xcodebuild -version` |
-| An iOS simulator runtime that matches it | `xcrun simctl list runtimes` |
+| An iOS simulator runtime that matches it (iOS 27 and iOS 18.6 both run the app) | `xcrun simctl list runtimes` |
 | Docker running | `docker ps` |
 | Node 22.13+ and pnpm | `node -v`, `pnpm -v` |
 | About 30 GB free disk | `df -h /` |
@@ -93,6 +93,7 @@ Real walkie-talkie audio (needs a LiveKit project and a development build with t
 
 ## 8. If the build fails
 
+- App closes right after launch on an iOS 27 simulator or phone: apps built with the iOS 27 SDK must use the UIScene lifecycle. `app.config.ts` turns it on with `expo-build-properties` (`ios.enableSceneSupport`); run `npx expo prebuild --platform ios --clean` so the generated project has the scene manifest, then rebuild.
 - Pod or Swift version errors: confirm the Xcode version and run `xcode-select -p`.
 - Metro cannot reach the backend from the simulator: use `127.0.0.1` (shared with the Mac); a phone on Wi-Fi needs the Mac's LAN address.
 - Map blank on iOS: the map is MapLibre with OpenFreeMap tiles and needs no key; check the simulator has network access.
