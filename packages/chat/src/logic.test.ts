@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  badgeLabel, canDelete, canSend, membersOfCrews, previewLine, roomFromRow, shortAge, showsSender, sortRooms,
+  badgeLabel, canDelete, canSend, membersOfCrews, messageFromInbox, previewLine, roomFromRow, shortAge, showsSender, sortRooms,
   type InboxMessage, type Message, type Room, type RoomRow,
 } from "./model";
 import { initialState, mergeMessages, notificationFor, reduce, shouldNotify, type ChatState } from "./reducer";
@@ -132,13 +132,38 @@ describe("reducer", () => {
     expect(s.messages.r1).toHaveLength(2);
   });
 
-  it("deletes a message and moves the last line back", () => {
+  it("deletes a message but leaves the preview for the server to settle", () => {
     const newest = { id: "b", senderId: "u2", handle: "ace", body: "newest", createdAt: "2026-01-01T10:01:00.000Z" };
     let s = withRooms([room({ lastMessage: newest })]);
     s = reduce(s, { type: "history", roomId: "r1", messages: [msg({ id: "a" }), msg({ id: "b", createdAt: newest.createdAt, body: "newest" })] });
     s = reduce(s, { type: "deleted", roomId: "r1", messageId: "b" });
     expect(s.messages.r1!.map((m) => m.id)).toEqual(["a"]);
+    expect(s.rooms[0]!.lastMessage!.id).toBe("b");
+    s = reduce(s, { type: "rooms", rooms: [room({ lastMessage: { ...newest, id: "a", body: "hello" } })] });
     expect(s.rooms[0]!.lastMessage!.id).toBe("a");
+  });
+
+  it("never replaces a richer message with a poorer copy of it", () => {
+    const rich = msg({ avatarPath: "a.jpg", carIcon: "rally" });
+    expect(mergeMessages([rich], [msg()])[0]).toEqual(rich);
+    expect(mergeMessages([msg()], [rich])[0]).toEqual(rich);
+  });
+
+  it("maps the avatar and car icon of a live message, with defaults when absent", () => {
+    expect(messageFromInbox(event({ avatar_path: "a.jpg", car_icon: "drift" }))).toMatchObject({ avatarPath: "a.jpg", carIcon: "drift" });
+    expect(messageFromInbox(event())).toMatchObject({ avatarPath: null, carIcon: "gt" });
+  });
+
+  it("merges a server snapshot without losing a newer local message or raising unread of the open room", () => {
+    const last = { id: "m2", senderId: "u2", handle: "ace", body: "new", createdAt: "2026-01-01T10:05:00.000Z" };
+    let s = withRooms([room()]);
+    s = reduce(s, { type: "incoming", event: event({ message_id: "m2", text: "new", created_at: last.createdAt }), self: "me" });
+    s = reduce(s, { type: "rooms", rooms: [room({ unread: 0 })] });
+    expect(s.rooms[0]).toMatchObject({ unread: 1, lastMessage: { id: "m2" } });
+    s = reduce(s, { type: "viewing", roomId: "r1" });
+    s = reduce(s, { type: "read", roomId: "r1" });
+    s = reduce(s, { type: "rooms", rooms: [room({ unread: 5 })] });
+    expect(s.rooms[0]!.unread).toBe(0);
   });
 
   it("clears unread when read, and sets mute", () => {

@@ -80,6 +80,8 @@ export interface InboxMessage {
   handle: string;
   text: string;
   created_at: string;
+  avatar_path?: string | null;
+  car_icon?: string | null;
 }
 
 export const roomFromRow = (row: RoomRow): Room => ({
@@ -111,13 +113,13 @@ export const messageFromRow = (roomId: string, row: MessageRow): Message => ({
   createdAt: row.created_at,
 });
 
-export const messageFromInbox = (event: InboxMessage, avatarPath: string | null = null, carIcon = "gt"): Message => ({
+export const messageFromInbox = (event: InboxMessage): Message => ({
   id: event.message_id,
   roomId: event.room_id,
   senderId: event.sender_id,
   handle: event.handle,
-  avatarPath,
-  carIcon,
+  avatarPath: event.avatar_path ?? null,
+  carIcon: event.car_icon ?? "gt",
   body: event.text,
   createdAt: event.created_at,
 });

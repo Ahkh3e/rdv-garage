@@ -1,5 +1,6 @@
 import type { ChannelLike, Shell } from "@rdv/core";
 import { CHAT_ROOM_ROUTE, type ChatRoomMember } from "@rdv/core/chat";
+import { TERMS_VERSION } from "@rdv/core/legal";
 import { createStore, type Store } from "@rdv/core/store";
 import {
   memberFromRow, messageFromRow, PAGE, roomFromRow,
@@ -28,6 +29,9 @@ const MARK_READ_MS = 1500;
 
 const noop = () => undefined;
 
+// Matches the terms gate: an unknown version is not asked to accept again.
+export const termsCleared = (profile: { termsVersion?: string | null }) => profile.termsVersion == null || profile.termsVersion === TERMS_VERSION;
+
 export function createChatController(
   shell: ControllerShell,
   deps: { notifier: RoomNotifier; appState: () => string; retryMs?: number },
@@ -35,7 +39,7 @@ export function createChatController(
   const state = createStore<ChatState>(initialState);
   const retryMs = deps.retryMs ?? RETRY_MS;
   let asked = false;
-  let refreshing: Promise<void> | null = null;
+  let seq = 0;
   const readTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const dispatch = (action: ChatAction) => state.set((prev) => reduce(prev, action));
@@ -53,13 +57,18 @@ export function createChatController(
       return state.get().rooms.find((r) => r.id === id);
     },
 
-    refresh(): Promise<void> {
-      refreshing ??= rpc<RoomRow[]>("list_rooms")
-        .then((rows) => dispatch({ type: "rooms", rooms: rows.map(roomFromRow) }))
-        .finally(() => {
-          refreshing = null;
-        });
-      return refreshing;
+    // The newest call wins; an older answer that lands later is dropped.
+    async refresh(): Promise<void> {
+      const mine = ++seq;
+      const rows = await rpc<RoomRow[]>("list_rooms");
+      if (mine !== seq) return;
+      dispatch({ type: "rooms", rooms: rows.map(roomFromRow) });
+    },
+
+    // The preview is kept as it is; the server decides what the last message is now.
+    onDeleted(roomId: string, messageId: string) {
+      dispatch({ type: "deleted", roomId, messageId });
+      void controller.refresh().catch(noop);
     },
 
     async loadHistory(roomId: string, before?: string): Promise<boolean> {
@@ -84,8 +93,7 @@ export function createChatController(
 
     async remove(roomId: string, messageId: string): Promise<void> {
       await rpc("delete_message", { p_message: messageId });
-      dispatch({ type: "deleted", roomId, messageId });
-      void controller.refresh().catch(noop);
+      controller.onDeleted(roomId, messageId);
     },
 
     markRead(roomId: string): Promise<void> {
@@ -186,10 +194,7 @@ export function createChatController(
         const next = shell.backend.channel(`inbox:${uid}`);
         channel = next;
         next.on("message", (payload) => void controller.onInbox(payload as InboxMessage));
-        next.on("message_deleted", (payload: { room_id: string; message_id: string }) => {
-          dispatch({ type: "deleted", roomId: payload.room_id, messageId: payload.message_id });
-          void controller.refresh().catch(noop);
-        });
+        next.on("message_deleted", (payload: { room_id: string; message_id: string }) => controller.onDeleted(payload.room_id, payload.message_id));
         next.on("room_changed", () => void controller.refresh().catch(noop));
         next.subscribe((status) => {
           if (stopped || channel !== next) return;
@@ -223,7 +228,31 @@ export function createChatController(
         for (const t of readTimers.values()) clearTimeout(t);
         readTimers.clear();
         void channel?.unsubscribe().catch(noop);
+        seq++;
         dispatch({ type: "reset" });
+      };
+    },
+
+    // Runs the controller while someone is signed in and has accepted the current terms.
+    watch(): () => void {
+      let stop: (() => void) | null = null;
+      let runningFor: string | null = null;
+      const sync = () => {
+        const session = shell.session.get();
+        const id = session.status === "signedIn" && termsCleared(session.profile) ? session.userId : null;
+        if (id === runningFor) return;
+        stop?.();
+        stop = null;
+        runningFor = id;
+        if (id) stop = controller.start();
+      };
+      const off = shell.session.subscribe(sync);
+      sync();
+      return () => {
+        off();
+        stop?.();
+        stop = null;
+        runningFor = null;
       };
     },
   };

@@ -17,7 +17,7 @@ export const chat: Module = {
   id: "chat",
   register(shell) {
     shell.addFlag("chat", true);
-    if (!shell.isEnabled("chat")) return;
+    if (!shell.isEnabled("chat")) return undefined;
     const controller = createChatController(shell, { notifier, appState: () => AppState.currentState });
     setController(shell, controller);
     shell.addTab({ id: "Rooms", title: "Rooms", icon: "chatbubble-outline", order: 25, component: RoomsTab });
@@ -27,16 +27,6 @@ export const chat: Module = {
     shell.addSlot("crew.detail", CrewRoomLink, 5);
     shell.addSlot(RDV_DETAIL_SLOT, RdvRoomLink, 10);
 
-    let stop: (() => void) | null = null;
-    let startedFor: string | null = null;
-    shell.session.subscribe(() => {
-      const session = shell.session.get();
-      const id = session.status === "signedIn" ? session.userId : null;
-      if (id === startedFor) return;
-      stop?.();
-      stop = null;
-      startedFor = id;
-      if (id) stop = controller.start();
-    });
+    return controller.watch();
   },
 };

@@ -24,18 +24,29 @@ export type ChatAction =
 
 const byTime = (a: Message, b: Message) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id);
 
+const richness = (m: Message) => Number(m.avatarPath != null) + Number(m.carIcon !== "gt");
+
 export function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
   const seen = new Map<string, Message>();
   for (const m of existing) seen.set(m.id, m);
-  for (const m of incoming) seen.set(m.id, m);
+  for (const m of incoming) {
+    const have = seen.get(m.id);
+    if (!have || richness(m) >= richness(have)) seen.set(m.id, m);
+  }
   const all = [...seen.values()].sort(byTime);
   return all.length > KEEP_PER_ROOM ? all.slice(all.length - KEEP_PER_ROOM) : all;
 }
 
-const lastOf = (messages: Message[]) => {
-  const m = messages[messages.length - 1];
-  return m ? { id: m.id, senderId: m.senderId, handle: m.handle, body: m.body, createdAt: m.createdAt } : null;
-};
+// A server snapshot can be older than what arrived live while it was in flight. Newer local state is kept.
+function mergeRoom(state: ChatState, incoming: Room): Room {
+  const local = state.rooms.find((r) => r.id === incoming.id);
+  if (!local) return incoming;
+  const localLast = local.lastMessage;
+  const localHeld = !!localLast && !!state.messages[local.id]?.some((m) => m.id === localLast.id);
+  const localNewer = localHeld && (!incoming.lastMessage || Date.parse(localLast!.createdAt) > Date.parse(incoming.lastMessage.createdAt));
+  const unread = state.viewing === incoming.id ? Math.min(local.unread, incoming.unread) : localNewer ? Math.max(local.unread, incoming.unread) : incoming.unread;
+  return { ...incoming, lastMessage: localNewer ? localLast : incoming.lastMessage, unread };
+}
 
 function addMessage(state: ChatState, message: Message, self: string | null): ChatState {
   const known = state.messages[message.roomId] ?? [];
@@ -61,7 +72,8 @@ export function reduce(state: ChatState, action: ChatAction): ChatState {
     case "rooms": {
       const ids = new Set(action.rooms.map((r) => r.id));
       const messages = Object.fromEntries(Object.entries(state.messages).filter(([id]) => ids.has(id)));
-      return { ...state, loaded: true, rooms: sortRooms(action.rooms), messages };
+      const rooms = action.rooms.map((incoming) => mergeRoom(state, incoming));
+      return { ...state, loaded: true, rooms: sortRooms(rooms), messages };
     }
     case "history":
       return { ...state, messages: { ...state.messages, [action.roomId]: mergeMessages(state.messages[action.roomId] ?? [], action.messages) } };
@@ -71,13 +83,8 @@ export function reduce(state: ChatState, action: ChatAction): ChatState {
       return addMessage(state, action.message, action.self);
     case "deleted": {
       const known = state.messages[action.roomId];
-      const messages = known ? { ...state.messages, [action.roomId]: known.filter((m) => m.id !== action.messageId) } : state.messages;
-      const rooms = state.rooms.map((room) =>
-        room.id === action.roomId && room.lastMessage?.id === action.messageId
-          ? { ...room, lastMessage: lastOf(messages[action.roomId] ?? []) }
-          : room,
-      );
-      return { ...state, messages, rooms: sortRooms(rooms) };
+      if (!known) return state;
+      return { ...state, messages: { ...state.messages, [action.roomId]: known.filter((m) => m.id !== action.messageId) } };
     }
     case "viewing":
       return { ...state, viewing: action.roomId };

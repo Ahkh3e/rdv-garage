@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Alert, AppState, Text as RNText } from "react-native";
-import { DISCLAIMER_ROOM, ShellApp, TERMS_VERSION } from "@rdv/core";
+import { DISCLAIMER_ROOM, ShellApp, TERMS_VERSION, createShell } from "@rdv/core";
+import { chat } from "@rdv/chat";
 import { CHAT_COMPOSER_ACTIONS_SLOT } from "@rdv/core/chat";
-import { makeBackend, makeShell, profileRow } from "./helpers";
+import { config, makeBackend, makeShell, profileRow } from "./helpers";
 
 jest.mock("expo-notifications", () => ({
   setNotificationHandler: jest.fn(),
@@ -13,6 +14,7 @@ jest.mock("expo-notifications", () => ({
   getAllScheduledNotificationsAsync: jest.fn(async () => []),
   setNotificationChannelAsync: jest.fn(async () => undefined),
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponse: jest.fn(() => null),
   AndroidImportance: { DEFAULT: 3 },
   SchedulableTriggerInputTypes: { DATE: "date" },
 }));
@@ -97,6 +99,7 @@ const setApp = (state: string) => void ((AppState as any).currentState = state);
 beforeEach(() => {
   setApp("active");
   jest.clearAllMocks();
+  mockNotifications.getLastNotificationResponse.mockReturnValue(null);
   alertSpy.mockClear();
   mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: true });
 });
@@ -452,5 +455,108 @@ describe("updated terms", () => {
     const b = backend({ rooms: [] }, { "accounts.my_profile": () => [profileRow({ terms_version: TERMS_VERSION })] });
     await mount(b);
     expect(screen.queryByText("Updated safety terms")).toBeNull();
+  });
+});
+
+describe("startup and gates", () => {
+  const lastResponse = (identifier: string) => ({ notification: { request: { identifier, content: { data: { chatRoomId: "room-crew" } } } } });
+
+  it("starts listening when someone is already signed in at registration, and stops on teardown", async () => {
+    const b = backend({ rooms: [roomRow()] });
+    const unsubscribe = jest.fn(async () => undefined);
+    b.channel = (name: string) => {
+      b.channelNames.push(name);
+      return { on: () => undefined, subscribe: () => undefined, send: async () => undefined, track: async () => undefined, untrack: async () => undefined, unsubscribe };
+    };
+    const shell = createShell({ ...config, flags: { rdvs: false, chat: true } }, b);
+    shell.session.set({ status: "signedIn", userId: "user-1", profile: { id: "user-1", handle: "tester", avatarPath: null, carIcon: "gt" } });
+    const teardown = chat.register(shell) as () => void;
+    expect(b.channelNames).toEqual(["inbox:user-1"]);
+    teardown();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it("opens the room of the notification that launched the app, only after the terms are accepted", async () => {
+    mockNotifications.getLastNotificationResponse.mockReturnValue(lastResponse("cold-1"));
+    const b = backend({ rooms: [roomRow()] }, { "accounts.my_profile": () => [profileRow({ terms_version: "v1" })], "accounts.accept_terms": () => null });
+    const shell = makeShell(b, { chat: true });
+    await render(<ShellApp shell={shell} />);
+    expect(await screen.findByText("Updated safety terms")).toBeTruthy();
+    expect(b.channelNames.filter((n: string) => n.startsWith("inbox:"))).toEqual([]);
+    expect(b.calls.some((c) => c.name === "chat.list_rooms")).toBe(false);
+    expect(screen.queryByTestId("composer-input")).toBeNull();
+    await fireEvent.press(screen.getByTestId("terms-accept"));
+    expect(await screen.findByTestId("composer-input")).toBeTruthy();
+    expect(b.channelNames.filter((n: string) => n.startsWith("inbox:"))).toEqual(["inbox:user-1"]);
+  });
+
+  it("opens the launching notification's room when no gate is in the way", async () => {
+    mockNotifications.getLastNotificationResponse.mockReturnValue(lastResponse("cold-2"));
+    await mount(backend({ rooms: [roomRow()] }));
+    expect(await screen.findByTestId("composer-input")).toBeTruthy();
+  });
+});
+
+describe("composer and room info", () => {
+  const openCrew = async (b: ReturnType<typeof backend>) => {
+    await mount(b);
+    await openRoomsTab();
+    await fireEvent.press(await screen.findByTestId("room-room-crew"));
+    await screen.findByTestId("composer-input");
+  };
+  const deferred = () => {
+    let resolve!: (v: unknown) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise((res, rej) => ((resolve = res), (reject = rej)));
+    return { promise, resolve, reject };
+  };
+  const input = () => screen.getByTestId("composer-input");
+
+  it("clears the draft at once, sends once however often send is pressed, and keeps text typed meanwhile", async () => {
+    const gate = deferred();
+    const b = backend({ rooms: [roomRow()] }, { "chat.send_message": async (a) => (await gate.promise, { id: "sent-1", room_id: a.p_room, sender_id: "user-1", handle: "tester", body: a.p_body, created_at: iso(Date.now()) }) });
+    await openCrew(b);
+    await fireEvent.changeText(input(), "hello crew");
+    await fireEvent.press(screen.getByTestId("composer-send"));
+    await waitFor(() => expect(b.calls.filter((c) => c.name === "chat.send_message")).toHaveLength(1));
+    await fireEvent.press(screen.getByTestId("composer-send"));
+    expect(input().props.value).toBe("");
+    await fireEvent.changeText(input(), "next one");
+    await act(async () => gate.resolve(null));
+    await screen.findByText("hello crew");
+    expect(b.calls.filter((c) => c.name === "chat.send_message")).toHaveLength(1);
+    expect(input().props.value).toBe("next one");
+  });
+
+  it("restores the draft when sending fails, in front of anything typed meanwhile", async () => {
+    const { AppError } = require("@rdv/core");
+    const gate = deferred();
+    const b = backend({ rooms: [roomRow()] }, { "chat.send_message": async () => { await gate.promise; throw new AppError("rate_limited"); } });
+    await openCrew(b);
+    await fireEvent.changeText(input(), "first");
+    await fireEvent.press(screen.getByTestId("composer-send"));
+    await waitFor(() => expect(b.calls.some((c) => c.name === "chat.send_message")).toBe(true));
+    await fireEvent.changeText(input(), "second");
+    await act(async () => gate.resolve(null));
+    expect(await screen.findByText("Too many attempts. Try again later.")).toBeTruthy();
+    expect(input().props.value).toBe("first\nsecond");
+  });
+
+  it("reloads the room when the info screen opens so moderator rights are current", async () => {
+    const rdv = (can: boolean) => roomRow({ id: "room-rdv", kind: "rdv", crew_id: null, rdv_id: "r1", name: "Sunday meet", role: "member", can_moderate: can });
+    const state = { rooms: [rdv(false)] as unknown[] };
+    const b = backend(state);
+    await mount(b);
+    await openRoomsTab();
+    await fireEvent.press(await screen.findByTestId("room-room-rdv"));
+    await screen.findByTestId("composer-input");
+    state.rooms = [rdv(true)];
+    await fireEvent.press(await screen.findByTestId("room-info"));
+    await screen.findByTestId("member-ace");
+    await waitFor(async () => {
+      await fireEvent.press(screen.getByTestId("member-ace"));
+      expect(alertSpy).toHaveBeenCalled();
+    });
+    expect(alertSpy.mock.calls.at(-1)![0]).toBe("@ace");
   });
 });
