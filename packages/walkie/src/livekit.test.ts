@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ignoreLogs = vi.fn();
+(globalThis as any).__DEV__ = true;
 vi.mock("react-native", () => ({ PermissionsAndroid: {}, Platform: { OS: "ios" }, LogBox: { ignoreLogs: (p: unknown) => ignoreLogs(p) } }));
 
 import { createLiveKitVoice } from "./livekit";
@@ -89,5 +90,61 @@ describe("livekit connect", () => {
     expect(levels).toHaveBeenCalled();
     await voice.disconnect();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("quiets expected livekit errors in development and keeps the rest", async () => {
+    const original = console.error;
+    const seen: unknown[][] = [];
+    console.error = (...a: unknown[]) => void seen.push(a);
+    try {
+      const m = mocks();
+      const voice = createLiveKitVoice({ rn: m.rn, lk: m.lk });
+      const connecting = voice.connect({ url: "wss://x", token: "t" });
+      await vi.advanceTimersByTimeAsync(0);
+      m.gates.connect!();
+      await connecting;
+      console.error("error reading from signal stream, WS closed unexpectedly with code 1001");
+      console.error("ping timeout triggered");
+      console.error("real failure");
+      expect(seen).toEqual([["real failure"]]);
+      expect(ignoreLogs).toHaveBeenCalled();
+      await voice.disconnect();
+    } finally {
+      console.error = original;
+    }
+  });
+
+  it("a superseded disconnect settling late does not stop the new session's audio", async () => {
+    const m = mocks();
+    let release!: () => void;
+    const rooms: any[] = [];
+    const Base = m.lk.Room;
+    m.lk.Room = class extends Base {
+      constructor() {
+        super();
+        rooms.push(this);
+      }
+      async disconnect() {
+        if (rooms[0] === this) await new Promise<void>((r) => (release = r));
+        m.log.push("room-disconnect");
+      }
+    };
+    const voice = createLiveKitVoice({ rn: m.rn, lk: m.lk });
+    const first = voice.connect({ url: "wss://x", token: "a" });
+    await vi.advanceTimersByTimeAsync(0);
+    m.gates.connect!();
+    await first;
+    const stale = voice.disconnect();
+    await vi.advanceTimersByTimeAsync(0);
+    const second = voice.connect({ url: "wss://x", token: "b" });
+    await vi.advanceTimersByTimeAsync(0);
+    m.gates.connect!();
+    await second;
+    m.log.length = 0;
+    release();
+    await stale;
+    expect(m.log).not.toContain("stop-audio");
+    expect(voice.identity()).toBe("me");
+    await voice.disconnect();
   });
 });

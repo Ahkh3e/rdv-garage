@@ -555,4 +555,56 @@ describe("stalled reconnects", () => {
     expect(vi.getTimerCount()).toBe(0);
     expect(phase(h.walkie)).toBe("idle");
   });
+
+  it("ignores a connected status while a join is still in progress and keeps the watchdog", async () => {
+    const h = await listening([{}, { can_publish: false }, { can_publish: false }]);
+    h.voice.hangConnects = 1;
+    h.voice.status("disconnected");
+    await settle();
+    expect(phase(h.walkie)).toBe("reconnecting");
+    h.voice.status("connected");
+    expect(phase(h.walkie)).toBe("reconnecting");
+    expect(h.walkie.state.get().canPublish).toBe(true);
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS);
+    expect(h.invocations).toHaveLength(3);
+    expect(phase(h.walkie)).toBe("listening");
+  });
+
+  it("does not let a late disconnect of a superseded room drop the new session", async () => {
+    const h = await listening([{}, { can_publish: false }]);
+    let finish!: () => void;
+    h.voice.disconnect = async () => {
+      h.voice.calls.push("disconnect");
+      await new Promise<void>((r) => (finish = r));
+    };
+    h.voice.status("disconnected");
+    await vi.advanceTimersByTimeAsync(CLOSE_MS + 1);
+    expect(phase(h.walkie)).toBe("listening");
+    const connects = h.voice.calls.filter((c) => c.startsWith("connect:")).length;
+    finish();
+    await settle();
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.invocations).toHaveLength(2);
+    expect(h.voice.calls.filter((c) => c.startsWith("connect:"))).toHaveLength(connects);
+  });
+
+  it("shows the indicator once even when the first join is restarted twice", async () => {
+    const h = harness([{}, {}, {}]);
+    h.voice.hangConnects = 2;
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.indicator.shown).toEqual(["Room"]);
+  });
+
+  it("leaves no timers after dispose even with a disconnect that hangs", async () => {
+    const h = await listening();
+    h.voice.hangDisconnect = true;
+    h.voice.status("disconnected");
+    await settle();
+    h.walkie.dispose();
+    await settle();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
