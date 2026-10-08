@@ -20,7 +20,11 @@ export function RoomInfo({ navigation, route }: { navigation: any; route: { para
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => controller.members(roomId).then(setMembers).catch(() => undefined), [controller, roomId]);
+  // Members and the room itself, so what this person may do reflects any role change.
+  const load = useCallback(
+    () => Promise.all([controller.members(roomId).then(setMembers), controller.refresh()]).then(() => undefined, () => undefined),
+    [controller, roomId],
+  );
   useEffect(() => void load(), [load]);
 
   const candidates = useMemo(() => {

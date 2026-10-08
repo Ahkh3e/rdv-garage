@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, AppState, FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -24,6 +24,7 @@ export function RoomScreen({ navigation, route }: { navigation: any; route: { pa
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const inFlight = useRef(false);
   const [members, setMembers] = useState<ChatRoomMember[]>([]);
   const memberCount = room?.memberCount ?? 0;
 
@@ -95,15 +96,18 @@ export function RoomScreen({ navigation, route }: { navigation: any; route: { pa
 
   const submit = async () => {
     const body = draft;
-    if (!canSend(body) || sending) return;
+    if (!canSend(body) || inFlight.current) return;
+    inFlight.current = true;
     setSending(true);
     setError(null);
+    setDraft("");
     try {
       await controller.send(roomId, body);
-      setDraft("");
     } catch (e) {
       setError(messageFor(e));
+      setDraft((typed) => (typed ? `${body}\n${typed}` : body));
     } finally {
+      inFlight.current = false;
       setSending(false);
     }
   };
@@ -196,7 +200,7 @@ export function RoomScreen({ navigation, route }: { navigation: any; route: { pa
             accessibilityRole="button"
             accessibilityLabel="Send"
             accessibilityState={{ disabled: !canSend(draft) || sending }}
-            onPress={submit}
+            onPress={() => void submit()}
             style={[styles.send, (!canSend(draft) || sending) && { opacity: 0.4 }]}
           >
             <Feather name="arrow-up" size={20} color={colors.onAccent} />
