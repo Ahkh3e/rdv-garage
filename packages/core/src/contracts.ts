@@ -288,5 +288,6 @@ export interface Shell {
 
 export interface Module {
   id: string;
-  register(shell: Shell): void;
+  // May return a function that undoes what register started.
+  register(shell: Shell): void | (() => void);
 }

@@ -14,21 +14,27 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
 export default function App() {
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, InterTight_600SemiBold, InterTight_700Bold, JetBrainsMono_500Medium });
 
-  const shell = useMemo(() => {
+  const app = useMemo(() => {
     const backend = createBackend(config, {
       getItemAsync: (key) => SecureStore.getItemAsync(key),
       setItemAsync: (key, value) => SecureStore.setItemAsync(key, value),
       deleteItemAsync: (key) => SecureStore.deleteItemAsync(key),
     });
     const next = createShell(config, backend);
-    for (const module of modules) module.register(next);
-    return next;
+    const teardowns: (() => void)[] = [];
+    for (const module of modules) {
+      const teardown = module.register(next);
+      if (teardown) teardowns.push(teardown);
+    }
+    return { shell: next, teardowns };
   }, []);
+
+  useEffect(() => () => app.teardowns.forEach((stop) => stop()), [app]);
 
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync().catch(() => undefined);
   }, [fontsLoaded]);
 
   if (!fontsLoaded) return <Spinner />;
-  return <ShellApp shell={shell} />;
+  return <ShellApp shell={app.shell} />;
 }
