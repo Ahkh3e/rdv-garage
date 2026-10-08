@@ -89,7 +89,7 @@ All scenarios A to H pass on two simulators, screenshots saved, suites green, an
 
 ## 7. Not covered here
 
-Real background location (screen locked, battery), the Android app, push, store review behavior, real email delivery, universal link verification on a real domain. These need a phone and the accounts in `docs/SETUP.md`.
+Real walkie-talkie audio (needs a LiveKit project and a development build with the new native modules; local runs only check tokens, grants and the kick queue), real background location (screen locked, battery), the Android app, push, store review behavior, real email delivery, universal link verification on a real domain. These need a phone and the accounts in `docs/SETUP.md`.
 
 ## 8. If the build fails
 
