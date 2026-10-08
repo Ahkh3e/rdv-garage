@@ -6,6 +6,7 @@ export * from "./store";
 export * from "./pins";
 export * from "./mapBridge";
 export * from "./places";
+export * from "./chat";
 export * from "./theme";
 export * from "./carIcons";
 export * from "./legal";

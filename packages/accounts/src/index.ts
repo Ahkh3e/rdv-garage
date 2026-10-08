@@ -9,6 +9,7 @@ import { EditProfile } from "./screens/EditProfile";
 import { Legal } from "./screens/Legal";
 import { Me } from "./screens/Me";
 import { ResetPassword } from "./screens/ResetPassword";
+import { TermsUpdate } from "./screens/TermsUpdate";
 import { consumeResetIntent } from "./resetIntent";
 import { pendingInvite } from "./state";
 
@@ -19,6 +20,7 @@ export const accounts: Module = {
   register(shell) {
     shell.addFlag("accounts", true);
     shell.setAuthFlow(AuthFlow);
+    shell.setTermsGate(TermsUpdate);
     shell.addTab({ id: "Me", title: "Me", icon: "person-circle-outline", order: 40, component: Me });
     shell.addRoute({ name: "EditProfile", component: EditProfile, title: "Edit profile" });
     shell.addRoute({ name: "CarPicker", component: CarPicker, title: "Your car" });

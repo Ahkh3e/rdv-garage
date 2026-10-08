@@ -1,5 +1,5 @@
 // Working draft of the safety wording from docs/disclaimers.md in the spec repo. A lawyer must review before launch.
-export const TERMS_VERSION = "v1";
+export const TERMS_VERSION = "v2";
 
 export const DISCLAIMER_SHORT =
   "Drive safely and obey all laws and speed limits. Don't use your phone while driving. Speeds are GPS estimates for fun, not a challenge to speed. You are responsible for how you drive.";
@@ -7,9 +7,12 @@ export const DISCLAIMER_SHORT =
 export const DISCLAIMER_PLACES =
   "Places and meets are added by members. Rendezview does not check them or organize any gathering. Attend at your own risk.";
 
+export const DISCLAIMER_ROOM =
+  "Don't read, type or talk on this while driving. Rooms are run by members. Voice is sent through a third-party audio service and is not recorded by Rendezview.";
+
 export const DISCLAIMER_FULL: { title: string; body: string }[] = [
   { title: "You are responsible for your driving", body: "Obey traffic laws, posted speed limits, and road conditions. RDV Garage does not encourage speeding, racing, stunts, or any unsafe or illegal driving." },
-  { title: "Don't operate the app while driving", body: "Set up Go live before you start. Once you are live, the map follows you and needs no input. Do not look at or touch your phone while driving. Passengers may use the app." },
+  { title: "Don't operate the app while driving", body: "Set up Go live before you start. Once you are live, the map follows you and needs no input. Do not look at or touch your phone while driving. Do not type, read messages, or hold a button to talk in chat rooms or the walkie-talkie while driving. Passengers may use the app." },
   { title: "Top speed is not a contest to break the law", body: "Speeds are estimates measured by your phone's GPS. They can be wrong. The leaderboard is for fun and carries no prize, reward, or endorsement. Never drive unsafely to improve a ranking. If you want to test speed, use a closed course where it is legal." },
   { title: "Your location is shared", body: "When you Go live, the crews you choose can see where you are. Only share with people you trust. Anyone in a crew you choose can see your live position and your top speeds for sessions shared with that crew. You can stop at any time." },
   { title: "Meets and cruises are organized by users", body: "RDV Garage does not organize, supervise, or insure any gathering. You attend at your own risk and are responsible for your own conduct and safety." },
@@ -17,5 +20,6 @@ export const DISCLAIMER_FULL: { title: string; body: string }[] = [
   { title: "Your account is your responsibility", body: "Keep your password private. You are responsible for activity on your account. If you forget your password, reset it by email; if you lose access to your email, we may not be able to restore your account." },
   { title: "Your email is for your account only", body: "We use it for confirmation and recovery. We do not show it to other users." },
   { title: "You must be 18 or older", body: "Use of the app is limited to adults who are licensed to drive where they drive." },
+  { title: "Chat and voice", body: "Messages in chat rooms are kept for 7 days and then deleted, and room members can read them. Walkie-talkie voice is sent through a third-party audio service and is not recorded by RDV Garage; people in the channel hear you, and the service sees your voice and network address but not your location. Rooms are run by members and RDV Garage does not review them." },
   { title: "Use at your own risk", body: "To the extent the law allows, RDV Garage is not liable for injury, loss, fines, or damage arising from your use of the app or from the actions of other users." },
 ];

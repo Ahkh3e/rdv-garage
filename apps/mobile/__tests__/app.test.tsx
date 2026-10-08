@@ -69,7 +69,7 @@ describe("signed out", () => {
     await waitFor(() => expect(backend.invoked.length).toBe(1));
     expect(backend.invoked[0]).toEqual({
       name: "register",
-      body: { invite_code: "ABC234DEF567", handle: "newdriver", email: "new@example.test", password: "longenough1", terms_version: "v1", age_confirmed: true },
+      body: { invite_code: "ABC234DEF567", handle: "newdriver", email: "new@example.test", password: "longenough1", terms_version: "v2", age_confirmed: true },
     });
     await waitFor(() => expect(backend.auth.signIn).toHaveBeenCalledWith("new@example.test", "longenough1"));
   });

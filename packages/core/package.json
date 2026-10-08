@@ -23,6 +23,7 @@
     "./errors": "./src/errors.ts",
     "./links": "./src/links.ts",
     "./places": "./src/places.ts",
-    "./mapBridge": "./src/mapBridge.ts"
+    "./mapBridge": "./src/mapBridge.ts",
+    "./chat": "./src/chat.ts"
   }
 }
