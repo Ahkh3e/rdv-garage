@@ -22,7 +22,7 @@ describe.skipIf(!enabled)("production mode registration", () => {
     const [invite] = await callOk<{ code: string }[]>(founder.client, "referral", "create_invite");
     const handle = uniq("p");
     const email = `${handle}@example.test`;
-    const res = await register({ invite_code: invite!.code, handle, email, password: "longenough1", terms_version: "v1", age_confirmed: true });
+    const res = await register({ invite_code: invite!.code, handle, email, password: "longenough1", terms_version: "v2", age_confirmed: true });
     expect(res.body.status).toBe("check_email");
 
     await expect(signIn(email, "longenough1")).rejects.toThrow(/confirm/i);
@@ -40,7 +40,7 @@ describe.skipIf(!enabled)("production mode registration", () => {
   it("answers an already-registered email the same way and does not reveal it", async () => {
     const founder = await createUser();
     const [invite] = await callOk<{ code: string }[]>(founder.client, "referral", "create_invite");
-    const res = await register({ invite_code: invite!.code, handle: uniq("p"), email: founder.email, password: "longenough1", terms_version: "v1", age_confirmed: true });
+    const res = await register({ invite_code: invite!.code, handle: uniq("p"), email: founder.email, password: "longenough1", terms_version: "v2", age_confirmed: true });
     expect(res.body.status).toBe("check_email");
     const mail = await latestMail(founder.email);
     expect(mail).not.toBeNull();

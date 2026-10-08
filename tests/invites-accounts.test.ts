@@ -33,7 +33,7 @@ describe("invites and registration", () => {
     const handle = uniq("new");
     const email = `${handle}@example.test`;
     const res = await register({
-      invite_code: invite!.code, handle, email, password: "longenough1", terms_version: "v1", age_confirmed: true,
+      invite_code: invite!.code, handle, email, password: "longenough1", terms_version: "v2", age_confirmed: true,
     });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("confirmed");
@@ -47,13 +47,13 @@ describe("invites and registration", () => {
       "select invited_by, invite_id, terms_version from accounts.profiles where handle = $1", [handle]);
     expect(rows[0]!.invited_by).toBe(founder.id);
     expect(rows[0]!.invite_id).toBe(invite!.id);
-    expect(rows[0]!.terms_version).toBe("v1");
+    expect(rows[0]!.terms_version).toBe("v2");
 
     // The invite is multi-use: a second person can join with it.
     const second = uniq("sec");
     const res2 = await register({
       invite_code: invite!.code, handle: second, email: `${second}@example.test`, password: "longenough1",
-      terms_version: "v1", age_confirmed: true,
+      terms_version: "v2", age_confirmed: true,
     });
     expect(res2.body.status).toBe("confirmed");
 
@@ -64,7 +64,7 @@ describe("invites and registration", () => {
   it("rejects bad registrations with stable codes", async () => {
     const founder = await createUser();
     const [invite] = await callOk<{ code: string }[]>(founder.client, "referral", "create_invite");
-    const base = { invite_code: invite!.code, handle: uniq("ok"), email: `${uniq("e")}@example.test`, password: "longenough1", terms_version: "v1", age_confirmed: true };
+    const base = { invite_code: invite!.code, handle: uniq("ok"), email: `${uniq("e")}@example.test`, password: "longenough1", terms_version: "v2", age_confirmed: true };
     const attempt = (over: Record<string, unknown>) => register({ ...base, email: `${uniq("e")}@example.test`, ...over });
 
     expect((await attempt({ invite_code: "ZZZZZZZZZZZZ" })).body.error).toBe("invalid_invite");
@@ -87,10 +87,10 @@ describe("invites and registration", () => {
     const [invite] = await callOk<{ id: string; code: string }[]>(founder.client, "referral", "create_invite");
     await sql("update referral.invites set expires_at = now() - interval '30 minutes' where id = $1", [invite!.id]);
     const h1 = uniq("g");
-    expect((await register({ invite_code: invite!.code, handle: h1, email: `${h1}@example.test`, password: "longenough1", terms_version: "v1", age_confirmed: true })).body.status).toBe("confirmed");
+    expect((await register({ invite_code: invite!.code, handle: h1, email: `${h1}@example.test`, password: "longenough1", terms_version: "v2", age_confirmed: true })).body.status).toBe("confirmed");
     await sql("update referral.invites set expires_at = now() - interval '2 hours' where id = $1", [invite!.id]);
     const h2 = uniq("g");
-    expect((await register({ invite_code: invite!.code, handle: h2, email: `${h2}@example.test`, password: "longenough1", terms_version: "v1", age_confirmed: true })).body.error).toBe("expired_invite");
+    expect((await register({ invite_code: invite!.code, handle: h2, email: `${h2}@example.test`, password: "longenough1", terms_version: "v2", age_confirmed: true })).body.error).toBe("expired_invite");
   });
 
   it("refuses registration for a revoked invite and for a suspended inviter", async () => {
@@ -98,7 +98,7 @@ describe("invites and registration", () => {
     const [inv] = await callOk<{ id: string; code: string }[]>(a.client, "referral", "create_invite");
     await callOk(a.client, "referral", "revoke_invite", { p_id: inv!.id });
     const h = uniq("r");
-    expect((await register({ invite_code: inv!.code, handle: h, email: `${h}@example.test`, password: "longenough1", terms_version: "v1", age_confirmed: true })).body.error).toBe("revoked_invite");
+    expect((await register({ invite_code: inv!.code, handle: h, email: `${h}@example.test`, password: "longenough1", terms_version: "v2", age_confirmed: true })).body.error).toBe("revoked_invite");
 
     const b = await createUser();
     const [inv2] = await callOk<{ code: string }[]>(b.client, "referral", "create_invite");
@@ -109,7 +109,7 @@ describe("invites and registration", () => {
   it("a duplicate email in test mode returns email_in_use and leaves no half-made account", async () => {
     const founder = await createUser();
     const [invite] = await callOk<{ code: string }[]>(founder.client, "referral", "create_invite");
-    const res = await register({ invite_code: invite!.code, handle: uniq("d"), email: founder.email, password: "longenough1", terms_version: "v1", age_confirmed: true });
+    const res = await register({ invite_code: invite!.code, handle: uniq("d"), email: founder.email, password: "longenough1", terms_version: "v2", age_confirmed: true });
     expect(res.body.error).toBe("email_in_use");
   });
 });

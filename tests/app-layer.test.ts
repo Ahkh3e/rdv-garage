@@ -28,7 +28,7 @@ const newBackend = () => createBackend(config, memoryStore());
 
 async function register(email: string, handle: string, code: string) {
   const backend = newBackend();
-  return backend.invokePublic<{ status: string }>("register", { invite_code: code, handle, email, password: "longenough1", terms_version: "v1", age_confirmed: true });
+  return backend.invokePublic<{ status: string }>("register", { invite_code: code, handle, email, password: "longenough1", terms_version: "v2", age_confirmed: true });
 }
 
 describe("app backend: accounts and referral", () => {
@@ -58,7 +58,7 @@ describe("app backend: accounts and referral", () => {
   it("maps server errors to stable codes", async () => {
     const b = newBackend();
     await expect(b.auth.signIn("nobody@example.test", "wrong-password")).rejects.toMatchObject({ code: "invalid_login" });
-    await expect(b.invokePublic("register", { invite_code: "ZZZZZZZZZZZZ", handle: uniq("x"), email: `${uniq("e")}@example.test`, password: "longenough1", terms_version: "v1", age_confirmed: true })).rejects.toMatchObject({ code: "invalid_invite" });
+    await expect(b.invokePublic("register", { invite_code: "ZZZZZZZZZZZZ", handle: uniq("x"), email: `${uniq("e")}@example.test`, password: "longenough1", terms_version: "v2", age_confirmed: true })).rejects.toMatchObject({ code: "invalid_invite" });
     const u = await createUser();
     const ub = newBackend();
     await ub.auth.signIn(u.email, u.password);
