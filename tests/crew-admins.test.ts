@@ -166,3 +166,40 @@ describe("voice columns", () => {
     expect(row).toEqual({ voice_revoked_at: null, voice_revoked_by: null });
   });
 });
+
+describe("remove_member on yourself", () => {
+  it("behaves like leave_crew for admins, members and owners", async () => {
+    const { owner, admin, member, crew } = await setup();
+    expect((await rm(owner, crew.id, owner.id)).error).toBe("owner_must_transfer");
+    expect(await roleOf(crew.id, owner.id)).toBe("owner");
+    await callOk(admin.client, "crews", "remove_member", { p_crew: crew.id, p_user: admin.id });
+    expect(await roleOf(crew.id, admin.id)).toBeNull();
+    await callOk(member.client, "crews", "remove_member", { p_crew: crew.id, p_user: member.id });
+    expect(await roleOf(crew.id, member.id)).toBeNull();
+    expect((await rm(member, crew.id, member.id)).error).toBe("not_a_member");
+  });
+});
+
+describe("voice_revoked_by constraint", () => {
+  it("is set null on delete", async () => {
+    const [row] = await sql<{ delete_rule: string }>(
+      `select rc.delete_rule from information_schema.referential_constraints rc where rc.constraint_name = 'members_voice_revoked_by_fkey'`,
+    );
+    expect(row!.delete_rule).toBe("SET NULL");
+  });
+});
+
+describe("list_my_crews member order", () => {
+  it("lists owner, then admins, then members, then by handle", async () => {
+    const { owner, admin, admin2, member, member2, crew } = await setup();
+    const view = await callOk<(CrewRow & { members: { user_id: string; handle: string; role: string }[] })[]>(member.client, "crews", "list_my_crews");
+    const got = view[0]!.members;
+    const rank = (r: string) => (r === "owner" ? 0 : r === "admin" ? 1 : 2);
+    const expected = [...got].sort((a, b) => rank(a.role) - rank(b.role) || (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0));
+    expect(got.map((m) => m.user_id)).toEqual(expected.map((m) => m.user_id));
+    expect(got.map((m) => m.role)).toEqual(["owner", "admin", "admin", "member", "member"]);
+    expect(got[0]!.user_id).toBe(owner.id);
+    expect(new Set(got.slice(1, 3).map((m) => m.user_id))).toEqual(new Set([admin.id, admin2.id]));
+    expect(new Set(got.slice(3).map((m) => m.user_id))).toEqual(new Set([member.id, member2.id]));
+  });
+});
