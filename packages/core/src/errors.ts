@@ -26,6 +26,8 @@ const MESSAGES: Record<string, string> = {
   crew_description_invalid: "Descriptions are up to 140 characters.",
   not_a_member: "You're not in that crew.",
   not_owner: "Only the crew owner can do that.",
+  not_moderator: "Only the crew owner or an admin can do that.",
+  cannot_moderate_admin: "Only the owner can remove an admin or the owner.",
   owner_must_transfer: "Transfer ownership before leaving, or delete the crew.",
   session_not_found: "That session is no longer active.",
   suspended: "This account has been suspended.",

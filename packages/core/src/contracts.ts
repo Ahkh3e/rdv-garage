@@ -62,12 +62,14 @@ export interface Backend {
 }
 
 // ---- Shared state contracts ---------------------------------------------------
+export type CrewRole = "owner" | "admin" | "member";
+
 export interface CrewMember {
   userId: string;
   handle: string;
   avatarPath: string | null;
   carIcon: string;
-  role: "owner" | "member";
+  role: CrewRole;
   live: boolean;
 }
 
@@ -77,7 +79,7 @@ export interface CrewSummary {
   description: string | null;
   avatarPath: string | null;
   ownerId: string;
-  role: "owner" | "member";
+  role: CrewRole;
   linkCode: string | null;
   selected: boolean;
   members: CrewMember[];
