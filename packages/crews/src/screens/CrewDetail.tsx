@@ -46,13 +46,18 @@ export function CrewDetail({ navigation, route }: { navigation: any; route: { pa
 
   const canManage = (userId: string, role: CrewRole) => userId !== me && (isOwner || (isModerator && role === "member"));
 
-  const memberActions = (userId: string, handle: string, role: CrewRole) => {
+  const memberActions = (userId: string, handle: string, role: CrewRole, voiceOff: boolean) => {
     if (!canManage(userId, role)) return;
     const rpc = (fn: string) => () => run(() => shell.backend.rpc("crews", fn, { p_crew: crew.id, p_user: userId }));
     Alert.alert(`@${handle}`, undefined, [
       ...(isOwner ? [{ text: "Make owner", onPress: () => confirm("Transfer ownership?", `@${handle} becomes the owner of ${crew.name}. You become a regular member, not an admin.`, rpc("transfer_ownership"), "Transfer") }] : []),
       ...(isOwner && role === "member" ? [{ text: "Add admin", onPress: () => confirm("Add admin?", `@${handle} can remove members, cancel RDVs and remove pins for this crew.`, rpc("promote_admin"), "Add admin") }] : []),
       ...(isOwner && role === "admin" ? [{ text: "Remove admin", onPress: () => confirm("Remove admin?", `@${handle} becomes a member.`, rpc("demote_admin"), "Remove admin") }] : []),
+      ...(shell.isEnabled("walkie")
+        ? [voiceOff
+            ? { text: "Voice on", onPress: () => run(() => shell.backend.rpc("crews", "set_voice_access", { p_crew: crew.id, p_user: userId, p_allowed: true })) }
+            : { text: "Voice off", onPress: () => confirm("Turn voice off?", `@${handle} can still read and send messages in ${crew.name}'s rooms, but can't use the walkie-talkie there.`, () => run(() => shell.backend.rpc("crews", "set_voice_access", { p_crew: crew.id, p_user: userId, p_allowed: false })), "Voice off") }]
+        : []),
       { text: "Remove from crew", style: "destructive" as const, onPress: () => confirm("Remove from crew", `Remove @${handle} from the crew?`, rpc("remove_member"), "Remove from crew") },
       { text: "Cancel", style: "cancel" as const },
     ]);
@@ -83,10 +88,10 @@ export function CrewDetail({ navigation, route }: { navigation: any; route: { pa
             {i > 0 ? <Divider /> : null}
             <Row
               title={`@${m.handle}${m.userId === me ? " (you)" : ""}`}
-              subtitle={`${ROLE_LABELS[m.role]}${m.live ? "  ·  Live now" : ""}`}
+              subtitle={`${ROLE_LABELS[m.role]}${m.live ? "  ·  Live now" : ""}${m.voiceOff ? "  ·  Voice off" : ""}`}
               left={<Avatar handle={m.handle} path={m.avatarPath} ring={m.live ? colors.accentBright : undefined} />}
               right={canManage(m.userId, m.role) ? <Ionicons name="ellipsis-horizontal" size={20} color={colors.muted} /> : undefined}
-              onPress={canManage(m.userId, m.role) ? () => memberActions(m.userId, m.handle, m.role) : undefined}
+              onPress={canManage(m.userId, m.role) ? () => memberActions(m.userId, m.handle, m.role, m.voiceOff === true) : undefined}
             />
           </View>
         ))}

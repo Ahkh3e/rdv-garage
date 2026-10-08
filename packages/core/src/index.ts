@@ -7,6 +7,7 @@ export * from "./pins";
 export * from "./mapBridge";
 export * from "./places";
 export * from "./chat";
+export * from "./voice";
 export * from "./theme";
 export * from "./carIcons";
 export * from "./legal";

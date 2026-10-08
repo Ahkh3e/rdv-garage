@@ -25,6 +25,7 @@
     "./places": "./src/places.ts",
     "./mapBridge": "./src/mapBridge.ts",
     "./chat": "./src/chat.ts",
+    "./voice": "./src/voice.ts",
     "./legal": "./src/legal.ts"
   }
 }
