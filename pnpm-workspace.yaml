@@ -4,3 +4,4 @@ packages:
   - ops
   - web
   - tests
+  - relay
