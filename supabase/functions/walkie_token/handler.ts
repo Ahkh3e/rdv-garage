@@ -9,6 +9,7 @@ export interface Access {
   state: string;
   can_publish?: boolean;
   voice_off_crews?: string[];
+  member_ids?: string[];
 }
 
 export interface TokenDeps {
@@ -28,11 +29,19 @@ export function rpcFailure(error: { message?: string } | null): Outcome | null {
     : { status: 502, body: { error: "walkie_unavailable" } };
 }
 
-export async function issueToken(body: unknown, userId: string, deps: TokenDeps): Promise<Outcome> {
-  const unavailable = { status: 503, body: { error: "walkie_unavailable" } };
+// Checked before a rate-limit slot is spent.
+export function parseTokenRequest(body: unknown): { roomId: string } | Outcome {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { status: 400, body: { error: "invalid_request" } };
   const roomId = (body as Record<string, unknown>).room_id;
   if (typeof roomId !== "string" || !UUID.test(roomId)) return { status: 400, body: { error: "room_not_found" } };
+  return { roomId };
+}
+
+export async function issueToken(body: unknown, userId: string, deps: TokenDeps): Promise<Outcome> {
+  const unavailable = { status: 503, body: { error: "walkie_unavailable" } };
+  const parsed = parseTokenRequest(body);
+  if ("status" in parsed) return parsed;
+  const roomId = parsed.roomId;
   if (!deps.livekit || !deps.identitySecret) return unavailable;
   const room = roomId.toLowerCase();
   const access = await deps.access(room, userId);
@@ -41,8 +50,10 @@ export async function issueToken(body: unknown, userId: string, deps: TokenDeps)
   const canPublish = access.can_publish === true;
   const identity = await participantIdentity(deps.identitySecret, userId, room);
   const token = await mintToken(deps.livekit, identity, listenerGrant(room, canPublish), deps.now());
+  const identities: Record<string, string> = {};
+  for (const member of access.member_ids ?? []) identities[await participantIdentity(deps.identitySecret, member.toLowerCase(), room)] = member;
   return {
     status: 200,
-    body: { token, url: deps.livekit.url, can_publish: canPublish, expires_in: TOKEN_TTL_SECONDS, voice_off_crews: access.voice_off_crews ?? [] },
+    body: { token, url: deps.livekit.url, can_publish: canPublish, expires_in: TOKEN_TTL_SECONDS, voice_off_crews: access.voice_off_crews ?? [], identities },
   };
 }

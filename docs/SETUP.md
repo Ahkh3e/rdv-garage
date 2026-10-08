@@ -53,7 +53,7 @@ The code is complete for 0.0.1. These are the accounts, keys, and one-time steps
    update private.settings set value = 'https://<project ref>.supabase.co/functions/v1/walkie_kick' where key = 'walkie_kick_url';
    update private.settings set value = '<random two>' where key = 'walkie_kick_secret';
    ```
-   Until both are set, removals are queued but not sent, and a removed person's access ends when their 5-minute token does. The database sends the call with `pg_net` after the change commits and a one-minute job resends calls that got no success answer; `private.walkie_kicks` is that queue and is emptied after 10 minutes.
+   Until both are set, removals are queued but not sent, and a removed person's access ends when their 5-minute token does. The database sends the call with `pg_net` after the change commits and a one-minute job sends each call again while the person is still not allowed (so a rejoin with an old token is kicked again); `private.walkie_kicks` is that queue, and a row is dropped after 6 minutes or as soon as the person is allowed back.
 5. Local development: `supabase/seed.sql` sets the local URL and a fake secret on `supabase db reset`. The local `.env` has fake LiveKit values, so token minting works and the kick call reaches `walkie_kick` but cannot reach LiveKit.
 6. The app needs a new development build (new native modules, microphone and background audio entitlements). Expo Go and old development builds will not work.
 

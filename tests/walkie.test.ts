@@ -144,6 +144,33 @@ describe("walkie_token", () => {
     expect(claims.sub).toBe(await participantIdentity(IDENTITY_SECRET, member.id, room));
   });
 
+  it("returns the roster of current members keyed by participant id, to members only and never in the token", async () => {
+    const { owner, member, stranger, room } = await setup();
+    const res = await token(member, room);
+    const body = res.body as { token: string; identities: Record<string, string> };
+    const expected: Record<string, string> = {};
+    const members = await sql<{ user_id: string }>("select user_id from chat.members where room_id = $1 and not blocked", [room]);
+    for (const m of members) expected[await participantIdentity(IDENTITY_SECRET, m.user_id, room)] = m.user_id;
+    expect(Object.keys(expected).length).toBe(4);
+    expect(body.identities).toEqual(expected);
+    expect(body.identities[decode(body.token).sub]).toBe(member.id);
+    expect(Object.values(body.identities)).toContain(owner.id);
+    const raw = Buffer.from(body.token.split(".")[1]!, "base64url").toString("utf8");
+    expect(raw).not.toContain(owner.id);
+    expect((await token(stranger, room)).body).not.toHaveProperty("identities");
+  });
+
+  it("validates the body before spending a rate-limit slot", async () => {
+    const { member, room } = await setup();
+    const used = async () => (await sql<{ count: number }>("select count from private.rate_limits where key = $1", [`walkie_token:${member.id}`]))[0]?.count ?? 0;
+    expect(await used()).toBe(0);
+    expect((await token(member, "not-a-uuid")).status).toBe(400);
+    expect((await invokeAs(member.client, "walkie_token", {})).status).toBe(400);
+    expect(await used()).toBe(0);
+    expect((await token(member, room)).status).toBe(200);
+    expect(await used()).toBe(1);
+  });
+
   it("keeps the participant id stable inside a room and different across rooms", async () => {
     const { member, owner, crew } = await setup();
     const invite = await callOk<string>(owner.client, "chat", "create_room", { p_name: "Side channel", p_member_ids: [member.id] });
@@ -263,6 +290,33 @@ describe("set_voice_access", () => {
     expect(await seen(bystander)).toBe(false);
   });
 
+  it("lets nobody change their own voice access, so a revoked admin cannot restore themselves", async () => {
+    const { owner, admin, crew } = await setup();
+    expect((await setVoice(owner, crew.id, admin.id, false)).error).toBeNull();
+    expect((await setVoice(admin, crew.id, admin.id, true)).error).toBe("cannot_moderate_admin");
+    expect((await setVoice(owner, crew.id, owner.id, false)).error).toBe("cannot_moderate_admin");
+    const row = await sql<{ voice_revoked_at: string | null }>("select voice_revoked_at from crews.members where crew_id = $1 and user_id = $2", [crew.id, admin.id]);
+    expect(row[0]!.voice_revoked_at).not.toBeNull();
+    expect((await setVoice(owner, crew.id, admin.id, true)).error).toBeNull();
+  });
+
+  it("needs an active crew and an active member", async () => {
+    const { owner, member, crew } = await setup();
+    await callOk(admin, "accounts", "suspend_user", { p_user: member.id });
+    expect((await setVoice(owner, crew.id, member.id, false)).error).toBe("not_a_member");
+    await sql("update crews.crews set status = 'dissolved' where id = $1", [crew.id]);
+    expect((await setVoice(owner, crew.id, member.id, false)).error).toBe("not_moderator");
+  });
+
+  it("restoring voice queues no kick", async () => {
+    const { owner, member, crew, room } = await setup();
+    await setVoice(owner, crew.id, member.id, false);
+    await sql("truncate private.walkie_kicks");
+    expect((await setVoice(owner, crew.id, member.id, true)).error).toBeNull();
+    expect(await kicksFor(room)).toEqual([]);
+    expect(await sql("select 1 from private.walkie_kicks")).toEqual([]);
+  });
+
   it("queues a kick of that person from the crew room, and from the crew's RDV room they are in", async () => {
     const { owner, member, crew, room } = await setup();
     await sql("truncate private.walkie_kicks");
@@ -328,6 +382,52 @@ describe("kick queue", () => {
     expect([200, 502]).toContain(status);
   });
 
+  const ageKick = (id: string, minutes: number) =>
+    sql("update private.walkie_kicks set sent_at = now() - interval '2 minutes', created_at = now() - make_interval(mins => $2::int) where id = $1", [id, minutes]);
+  const attempts = async (id: string) => (await sql<{ attempts: number }>("select attempts from private.walkie_kicks where id = $1", [id]))[0]?.attempts ?? null;
+
+  it("sends a kick at once and again each retry while the person is still out, so an old token cannot rejoin", async () => {
+    const { owner, member, crew, room } = await setup();
+    await sql("truncate private.walkie_kicks");
+    await setVoice(owner, crew.id, member.id, false);
+    const [row] = await sql<{ id: string }>("select id from private.walkie_kicks where room_id = $1", [room]);
+    expect(await attempts(row!.id)).toBe(1);
+    await ageKick(row!.id, 1);
+    await sql("select private.walkie_retry()");
+    expect(await attempts(row!.id)).toBe(2);
+    await ageKick(row!.id, 4);
+    await sql("select private.walkie_retry()");
+    expect(await attempts(row!.id)).toBe(3);
+  });
+
+  it("drops a kick for a person restored before the retry, and re-added people", async () => {
+    const { owner, member, crew, room } = await setup();
+    await sql("truncate private.walkie_kicks");
+    await setVoice(owner, crew.id, member.id, false);
+    const [row] = await sql<{ id: string }>("select id from private.walkie_kicks where room_id = $1", [room]);
+    await setVoice(owner, crew.id, member.id, true);
+    await ageKick(row!.id, 1);
+    await sql("select private.walkie_retry()");
+    expect(await attempts(row!.id)).toBeNull();
+
+    await sql("truncate private.walkie_kicks");
+    await callOk(owner.client, "crews", "remove_member", { p_crew: crew.id, p_user: member.id });
+    const [removed] = await sql<{ id: string }>("select id from private.walkie_kicks where room_id = $1", [room]);
+    await ageKick(removed!.id, 1);
+    await sql("select private.walkie_retry()");
+    expect(await attempts(removed!.id)).toBe(2);
+  });
+
+  it("forgets a kick after six minutes", async () => {
+    const { owner, member, crew, room } = await setup();
+    await sql("truncate private.walkie_kicks");
+    await setVoice(owner, crew.id, member.id, false);
+    const [row] = await sql<{ id: string }>("select id from private.walkie_kicks where room_id = $1", [room]);
+    await ageKick(row!.id, 7);
+    await sql("select private.walkie_retry()");
+    expect(await attempts(row!.id)).toBeNull();
+  });
+
   it("is refused by walkie_kick without the secret", async () => {
     const res = await fetch(`${API_URL}/functions/v1/walkie_kick`, {
       method: "POST",
@@ -339,27 +439,16 @@ describe("kick queue", () => {
 });
 
 describe("walkie channel", () => {
-  const subscribe = (u: TestUser, topic: string) =>
-    new Promise<{ status: string; events: unknown[]; channel: ReturnType<TestUser["client"]["channel"]>; stop: () => Promise<unknown> }>((resolve) => {
-      const events: unknown[] = [];
-      const channel = u.client.channel(topic, { config: { private: true, broadcast: { self: false } } });
-      channel.on("broadcast", { event: "start" }, (m) => events.push(m.payload));
-      channel.subscribe((status) => {
-        if (["SUBSCRIBED", "CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) resolve({ status, events, channel, stop: () => u.client.removeChannel(channel) });
+  it("no longer exists: nobody, member or not, can use a walkie:<room_id> broadcast channel", async () => {
+    const { member, room } = await setup();
+    const status = await new Promise<string>((resolve) => {
+      const channel = member.client.channel(`walkie:${room}`, { config: { private: true, broadcast: { self: false } } });
+      channel.subscribe((s) => {
+        if (["SUBSCRIBED", "CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(s)) resolve(s);
       });
     });
-
-  it("lets only members of the room join and talk", async () => {
-    const { owner, member, stranger, room } = await setup();
-    const listener = await subscribe(member, `walkie:${room}`);
-    const speaker = await subscribe(owner, `walkie:${room}`);
-    const outsider = await subscribe(stranger, `walkie:${room}`);
-    expect(listener.status).toBe("SUBSCRIBED");
-    expect(speaker.status).toBe("SUBSCRIBED");
-    expect(outsider.status).not.toBe("SUBSCRIBED");
-    await speaker.channel.send({ type: "broadcast", event: "start", payload: { user_id: owner.id } });
-    for (let i = 0; i < 40 && listener.events.length === 0; i++) await sleep(100);
-    expect(listener.events).toEqual([{ user_id: owner.id }]);
-    await Promise.all([listener.stop(), speaker.stop(), outsider.stop()]);
+    expect(status).not.toBe("SUBSCRIBED");
+    const policies = await sql("select 1 from pg_policies where schemaname = 'realtime' and policyname like 'walkie_channel%'");
+    expect(policies).toEqual([]);
   });
 });
