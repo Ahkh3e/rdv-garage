@@ -6,15 +6,17 @@ export const isExpectedLiveKitLog = (message: string) => EXPECTED_LIVEKIT_LOGS.s
 
 const FILTERED = Symbol.for("rdv.expectedLogFilter");
 
-// Wraps console.error once so expected livekit lines never reach Metro or the error overlay. Everything else passes through.
-// livekit-client binds console.error when it loads, so this must run before it is required.
-export function installExpectedLogFilter(target: { error: (...args: any[]) => void }) {
-  const current = target.error as ((...args: any[]) => void) & { [FILTERED]?: true };
-  if (current[FILTERED]) return;
-  const wrapped = ((...args: any[]) => {
-    if (typeof args[0] === "string" && isExpectedLiveKitLog(args[0])) return;
-    current.apply(target, args);
-  }) as typeof current;
-  wrapped[FILTERED] = true;
-  target.error = wrapped;
+// Wraps console.error and console.warn once so expected livekit lines never reach Metro or the error overlay. Everything else passes through.
+// livekit-client logs "ping timeout triggered" at warn level, and binds the console methods when it loads, so this must run before it is required.
+export function installExpectedLogFilter(target: { error: (...args: any[]) => void; warn?: (...args: any[]) => void }) {
+  for (const level of ["error", "warn"] as const) {
+    const current = target[level] as ((...args: any[]) => void) & { [FILTERED]?: true } | undefined;
+    if (!current || current[FILTERED]) continue;
+    const wrapped = ((...args: any[]) => {
+      if (typeof args[0] === "string" && isExpectedLiveKitLog(args[0])) return;
+      current.apply(target, args);
+    }) as typeof current;
+    wrapped[FILTERED] = true;
+    target[level] = wrapped;
+  }
 }

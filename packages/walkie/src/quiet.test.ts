@@ -30,4 +30,15 @@ describe("console filter", () => {
     expect(seen).toHaveLength(2);
     expect(seen[0]).toEqual(["could not publish", 1]);
   });
+  it("also drops expected lines logged as warnings", () => {
+    const seen: unknown[][] = [];
+    const target = { error: (...a: unknown[]) => void seen.push(a), warn: (...a: unknown[]) => void seen.push(a) };
+    installExpectedLogFilter(target);
+    const warn = target.warn;
+    installExpectedLogFilter(target);
+    expect(target.warn).toBe(warn);
+    target.warn("ping timeout triggered. last pong received at: x", { room: "r" });
+    target.warn("something else", 2);
+    expect(seen).toEqual([["something else", 2]]);
+  });
 });
