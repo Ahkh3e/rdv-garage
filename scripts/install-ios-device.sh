@@ -5,8 +5,6 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mobile="$root/apps/mobile"
-derived=/private/tmp/rdv-dd-device
-bundle_id="${RDV_BUNDLE_ID:-app.rdvgarage.mobile}"
 dry=0
 clean=0
 target=""
@@ -77,24 +75,24 @@ else
   block "Developer Mode is $dev_mode on $dname. On the phone: Settings, Privacy & Security, scroll to the bottom, Developer Mode, turn it on, restart when asked, then confirm Turn On after the restart and enter the passcode."
 fi
 
-team="${DEVELOPMENT_TEAM:-}"
-if [ -z "$team" ]; then
+pbx="$mobile/ios/RDVGarage.xcodeproj/project.pbxproj"
+find_team() {
+  local t="${DEVELOPMENT_TEAM:-}" name teams
+  if [ -n "$t" ]; then printf '%s' "$t"; return; fi
   name="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' | sort -u)"
   if [ -n "$name" ]; then
     teams="$(printf '%s\n' "$name" | while read -r n; do
       security find-certificate -a -c "$n" -p 2>/dev/null | openssl x509 -noout -subject -nameopt multiline 2>/dev/null | sed -n 's/^ *organizationalUnitName *= *//p'
     done | sort -u | grep -v '^$' || true)"
-    if [ "$(printf '%s' "$teams" | grep -c .)" = 1 ]; then team="$teams"; elif [ -n "$teams" ]; then say "several Apple Development teams found, set DEVELOPMENT_TEAM to one of: $(printf '%s' "$teams" | tr '\n' ' ')" >&2; fi
+    if [ "$(printf '%s' "$teams" | grep -c .)" = 1 ]; then printf '%s' "$teams"; return; fi
+    if [ -n "$teams" ]; then say "several Apple Development teams found, set DEVELOPMENT_TEAM to one of: $(printf '%s' "$teams" | tr '\n' ' ')" >&2; fi
   fi
-fi
-if [ -z "$team" ]; then
-  team="$(defaults read com.apple.dt.Xcode IDEProvisioningTeamManagerCachedTeams 2>/dev/null | sed -n 's/.*teamID = "\{0,1\}\([A-Z0-9]\{10\}\).*/\1/p' | sort -u | head -1 || true)"
-fi
-if [ -z "$team" ]; then
-  block "no development team found. In Xcode: Settings, Accounts, + , Apple ID, sign in. Then open apps/mobile/ios/RDVGarage.xcworkspace once, select the RDVGarage target, Signing & Capabilities, and pick your Personal Team. Run this script again (or set DEVELOPMENT_TEAM=<team id>)."
-  team="<team id>"
-fi
-say "team: $team"
+  if [ -f "$pbx" ]; then
+    t="$(sed -n 's/.*DEVELOPMENT_TEAM = "\{0,1\}\([A-Z0-9]\{10\}\)"\{0,1\};.*/\1/p' "$pbx" | sort -u)"
+    if [ "$(printf '%s' "$t" | grep -c .)" = 1 ]; then printf '%s' "$t"; return; fi
+  fi
+  defaults read com.apple.dt.Xcode IDEProvisioningTeamManagerCachedTeams 2>/dev/null | sed -n 's/.*teamID = "\{0,1\}\([A-Z0-9]\{10\}\).*/\1/p' | sort -u | head -1 || true
+}
 
 env_file="$mobile/.env"
 if ! grep -q '^EXPO_PUBLIC_SUPABASE_URL=.\+' "$env_file" 2>/dev/null; then
@@ -103,27 +101,40 @@ else
   say "note: the build embeds the values in apps/mobile/.env (the hosted project); they are not printed."
 fi
 
-if [ "$blocked" = 1 ]; then say "dry run: the checks above would stop a real run."; fi
-
 export RDV_FREE_APPLE_ID=1
-export RDV_BUNDLE_ID="$bundle_id"
+bundle_id="$(cd "$mobile" && npx expo config --type public --json 2>/dev/null | node -e 'console.log(JSON.parse(require("fs").readFileSync(0)).ios.bundleIdentifier)')"
+[ -n "$bundle_id" ] || { say "BLOCKED: could not read the bundle identifier from the Expo config." >&2; exit 1; }
+say "bundle id: $bundle_id (extension $bundle_id.LiveActivity)"
+
+team="$(find_team)"
 marker="$mobile/ios/.rdv-free-apple-id"
 want="free:$bundle_id"
 prebuild=(npx expo prebuild --platform ios)
-if [ "$clean" = 1 ] || [ ! -d "$mobile/ios" ] || [ "$(cat "$marker" 2>/dev/null || true)" != "$want" ]; then
-  [ -d "$mobile/ios" ] && prebuild+=(--clean)
+if [ -d "$mobile/ios" ]; then
+  if [ "$clean" = 1 ] || [ "$(cat "$marker" 2>/dev/null || true)" != "$want" ]; then prebuild+=(--clean); fi
 fi
-say "bundle id: $bundle_id (extension $bundle_id.LiveActivity)"
+if [ -n "$team" ]; then export RDV_TEAM_ID="$team"; fi
 if [ "$dry" = 1 ]; then
-  say "would run (in apps/mobile): RDV_FREE_APPLE_ID=1 RDV_BUNDLE_ID=$bundle_id ${prebuild[*]}"
+  say "would run (in apps/mobile): RDV_FREE_APPLE_ID=1 ${team:+RDV_TEAM_ID=$team }${prebuild[*]}"
 else
   (cd "$mobile" && "${prebuild[@]}")
-  echo "$want" >"$marker"
+  [ -n "$team" ] || team="$(find_team)"
 fi
 
+if [ -z "$team" ]; then
+  block "no development team found. In Xcode: Settings, Accounts, + , Apple ID, sign in. Then open apps/mobile/ios/RDVGarage.xcworkspace, select the RDVGarage target, Signing & Capabilities, pick your Personal Team, close Xcode, and run this script again. Or set DEVELOPMENT_TEAM=<team id>."
+  team="<team id>"
+fi
+say "team: $team"
+
+if [ "$blocked" = 1 ]; then say "dry run: the checks above would stop a real run."; fi
+
+derived="${TMPDIR:-/tmp}"
+derived="${derived%/}/rdv-dd-device-$bundle_id"
+if [ "$dry" != 1 ]; then mkdir -p -m 700 "$derived"; fi
 app="$derived/Build/Products/Release-iphoneos/RDVGarage.app"
 run xcodebuild -workspace "$mobile/ios/RDVGarage.xcworkspace" -scheme RDVGarage -configuration Release \
-  -destination "id=$udid" -allowProvisioningUpdates "DEVELOPMENT_TEAM=$team" -derivedDataPath "$derived"
+  -destination "id=$udid" -allowProvisioningUpdates -derivedDataPath "$derived"
 run xcrun devicectl device install app --device "$ident" "$app"
 run xcrun devicectl device process launch --device "$ident" --terminate-existing "$bundle_id"
 
@@ -131,5 +142,7 @@ if [ "$dry" = 1 ]; then
   [ "$blocked" = 0 ] || exit 1
   say "dry run complete; nothing was built or installed."
 else
+  echo "$want" >"$marker"
   say "installed and launched $bundle_id on $dname. If it will not open: Settings, General, VPN & Device Management, trust your Apple ID."
+  say "WARNING: apps/mobile/ios is now generated for the free Apple ID (no Associated Domains, no push). To return to the default project run: (cd apps/mobile && env -u RDV_FREE_APPLE_ID -u RDV_TEAM_ID -u RDV_BUNDLE_ID npx expo prebuild --platform ios --clean)"
 fi
