@@ -2,6 +2,7 @@ import { anonClient, corsHeaders, fail, json, serviceClient } from "../_shared/l
 import { rpcFailure, searchPlaces } from "./handler.ts";
 
 const PHOTON_URL = Deno.env.get("PHOTON_URL") ?? "https://photon.komoot.io";
+const PHOTON_KEY = Deno.env.get("PHOTON_KEY") || undefined;
 
 // Forwards only the typed text and a coarse bias point. No account, crew, handle or address of the caller reaches
 // the geocoder, and nothing about the search is stored.
@@ -26,6 +27,6 @@ Deno.serve(async (req) => {
   } catch {
     return fail("invalid_request");
   }
-  const outcome = await searchPlaces(body, PHOTON_URL);
+  const outcome = await searchPlaces(body, PHOTON_URL, fetch, undefined, PHOTON_KEY);
   return json(outcome.body, outcome.status);
 });
