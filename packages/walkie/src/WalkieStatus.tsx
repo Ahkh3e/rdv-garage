@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { Avatar, Button, CarIcon, DISCLAIMER_ROOM, Text, colors, radii } from "@rdv/core";
@@ -42,10 +42,17 @@ export function WalkieStatus({ room }: ChatRoomSlotProps) {
     };
   }, [disclaimerSeen]);
 
+  const memberKey = room.members.map((m) => m.userId).sort().join(",");
+  const lastMembers = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastMembers.current !== null && lastMembers.current !== memberKey) controller.rosterChanged();
+    if (memberKey) lastMembers.current = memberKey;
+  }, [controller, memberKey]);
+
   if (room.closed || s.roomId !== room.roomId) return null;
   const byId = new Map(room.members.map((m) => [m.userId, m]));
-  const speakerIds = Object.keys(s.people.speakers);
-  const presentIds = Object.keys(s.people.present).filter((id) => byId.has(id));
+  const speakerIds = s.audible.filter((id) => byId.has(id));
+  const presentIds = s.present.filter((id) => byId.has(id));
   const line = statusLine(s);
   const dismiss = () => {
     setShowDisclaimer(false);

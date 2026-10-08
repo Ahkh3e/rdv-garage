@@ -24,6 +24,7 @@ export function statusLine(s: Pick<WalkieState, "phase" | "canPublish" | "voiceO
     case "reconnecting":
       return { tone: "info", text: "Reconnecting voice..." };
     case "unavailable":
+      if (s.error === "rate_limited") return { tone: "warn", text: "Busy, try again shortly." };
       return { tone: "warn", text: "Voice isn't available right now. Trying again..." };
     case "removed":
       return { tone: "warn", text: s.error === "room_closed" ? "This room is closed. Voice has ended." : "You're no longer in this room's voice channel." };

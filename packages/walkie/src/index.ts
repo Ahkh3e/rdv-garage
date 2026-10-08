@@ -13,7 +13,6 @@ import { MIC_EXPLANATION } from "./lines";
 import { TalkButton } from "./Talk";
 
 export { createWalkie, type WalkieController, type WalkieState, type RoomIndicator } from "./controller";
-export { reducePeople, emptyPeople } from "./people";
 export { createTalkTimer, TALK_LIMIT_MS } from "./talkTimer";
 
 const DISCLAIMER_KEY = "rdv.walkie.disclaimer.seen";

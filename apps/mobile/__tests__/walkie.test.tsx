@@ -42,10 +42,12 @@ const people = [
 function fakeVoice() {
   const log: string[] = [];
   const levelFns = new Set<(l: Record<string, number>) => void>();
+  const speakerFns = new Set<(i: string[]) => void>();
   const statusFns = new Set<(s: VoiceStatus) => void>();
-  const voice: Voice & { log: string[]; levelFns: typeof levelFns } = {
+  const voice: Voice & { log: string[]; levelFns: typeof levelFns; speakerFns: typeof speakerFns } = {
     log,
     levelFns,
+    speakerFns,
     connect: jest.fn(async ({ token }) => void log.push(`connect:${token}`)),
     disconnect: jest.fn(async () => void log.push("disconnect")),
     setMicOpen: jest.fn(async (open: boolean) => void log.push(open ? "mic-on" : "mic-off")),
@@ -53,7 +55,8 @@ function fakeVoice() {
     setSoundMuted: jest.fn(),
     identity: () => "ident-me",
     onStatus: (fn) => (statusFns.add(fn), () => statusFns.delete(fn)),
-    onSpeakers: () => () => undefined,
+    onSpeakers: (fn) => (speakerFns.add(fn), () => speakerFns.delete(fn)),
+    onParticipants: () => () => undefined,
     onLevels: (fn) => (levelFns.add(fn), () => levelFns.delete(fn)),
   };
   return voice;
@@ -62,8 +65,6 @@ function fakeVoice() {
 function setup(opts: { token?: Record<string, unknown>; disclaimerSeen?: boolean; walkieFlag?: boolean; voiceOff?: boolean } = {}) {
   const voice = fakeVoice();
   const seen = { value: opts.disclaimerSeen ?? false };
-  const channels = new Map<string, Record<string, (p: any) => void>>();
-  const sent: { channel: string; event: string; payload: unknown }[] = [];
   const b = makeBackend("user-1", {
     "accounts.my_profile": () => [profileRow()],
     "crews.list_my_crews": () => [crewRow(opts.voiceOff)],
@@ -76,18 +77,8 @@ function setup(opts: { token?: Record<string, unknown>; disclaimerSeen?: boolean
     "chat.list_room_members": () => people,
     "chat.mark_read": () => null,
     "crews.set_voice_access": () => null,
-    "fn.walkie_token": () => ({ token: "tok-1", url: "wss://voice.test", can_publish: true, expires_in: 300, voice_off_crews: [], ...opts.token }),
+    "fn.walkie_token": () => ({ token: "tok-1", url: "wss://voice.test", can_publish: true, expires_in: 300, voice_off_crews: [], identities: { "ident-me": "user-1", "ident-ace": "user-2" }, ...opts.token }),
   });
-  b.channel = (name: string) => {
-    const handlers: Record<string, (p: any) => void> = {};
-    channels.set(name, handlers);
-    return {
-      on: (event: string, fn: (p: any) => void) => void (handlers[event] = fn),
-      subscribe: (cb?: (s: any) => void) => cb?.("SUBSCRIBED"),
-      send: async (event: string, payload: Record<string, unknown>) => void sent.push({ channel: name, event, payload }),
-      track: async () => undefined, untrack: async () => undefined, unsubscribe: async () => undefined,
-    };
-  };
   const shell = createShell({ ...config, flags: { rdvs: false, chat: true, walkie: opts.walkieFlag ?? true } }, b);
   const explainMic = jest.fn(async () => true);
   for (const m of modules) {
@@ -100,7 +91,7 @@ function setup(opts: { token?: Record<string, unknown>; disclaimerSeen?: boolean
       }).register(shell);
     } else m.register(shell);
   }
-  return { shell, b, voice, channels, sent, explainMic, seen };
+  return { shell, b, voice, explainMic, seen };
 }
 
 const openRoom = async () => {
@@ -130,7 +121,6 @@ describe("room voice", () => {
     await mount(s);
     await waitFor(() => expect(s.voice.connect).toHaveBeenCalledWith({ url: "wss://voice.test", token: "tok-1" }));
     expect(s.b.invoked.find((i) => i.name === "walkie_token")!.body).toEqual({ room_id: "room-crew" });
-    expect(s.channels.has("walkie:room-crew")).toBe(true);
     expect(s.voice.log).not.toContain("mic-on");
     expect(screen.getByTestId("talk-button").props.accessibilityState.disabled).toBe(false);
     await act(async () => void screen.unmount());
@@ -146,11 +136,9 @@ describe("room voice", () => {
     expect(s.voice.requestMicPermission).toHaveBeenCalledTimes(1);
     expect(await screen.findByTestId("on-the-air-self")).toBeTruthy();
     expect(s.voice.log.at(-1)).toBe("mic-on");
-    expect(s.sent.find((e) => e.event === "start")).toMatchObject({ channel: "walkie:room-crew", payload: { user_id: "user-1", identity: "ident-me" } });
     await fireEvent(screen.getByTestId("talk-button"), "pressOut");
     await waitFor(() => expect(screen.queryByTestId("on-the-air-self")).toBeNull());
     expect(s.voice.log.at(-1)).toBe("mic-off");
-    expect(s.sent.at(-1)!.event).toBe("stop");
   });
 
   it("closes the microphone when the app leaves the foreground", async () => {
@@ -163,17 +151,28 @@ describe("room voice", () => {
     await waitFor(() => expect(s.voice.log.at(-1)).toBe("mic-off"));
   });
 
-  it("shows who is talking from the channel events, with handle and level, and nothing else", async () => {
+  it("shows who is talking from the audio service and the server roster, with handle and level", async () => {
     const s = setup();
     await mount(s);
-    await waitFor(() => expect(s.channels.get("walkie:room-crew")).toBeTruthy());
-    await act(async () => void s.channels.get("walkie:room-crew")!.start!({ user_id: "user-2", identity: "ident-ace" }));
+    await waitFor(() => expect(s.voice.connect).toHaveBeenCalled());
+    await act(async () => s.voice.speakerFns.forEach((fn) => fn(["ident-ace"])));
     expect(await screen.findByTestId("talker-user-2")).toBeTruthy();
     expect(screen.getByText("@ace")).toBeTruthy();
     await act(async () => s.voice.levelFns.forEach((fn) => fn({ "ident-ace": 0.5 })));
     expect(screen.getByTestId("meter-user-2").props.style).toEqual(expect.arrayContaining([expect.objectContaining({ width: "50%" })]));
-    await act(async () => void s.channels.get("walkie:room-crew")!.stop!({ user_id: "user-2" }));
+    await act(async () => s.voice.speakerFns.forEach((fn) => fn([])));
     await waitFor(() => expect(screen.queryByTestId("talker-user-2")).toBeNull());
+  });
+
+  it("does not show anyone talking because of a forged broadcast, and opens no member channel", async () => {
+    const s = setup();
+    const channel = jest.fn();
+    s.b.channel = channel as never;
+    await mount(s);
+    await waitFor(() => expect(s.voice.connect).toHaveBeenCalled());
+    expect(channel.mock.calls.some(([name]) => String(name).startsWith("walkie:"))).toBe(false);
+    await act(async () => s.voice.speakerFns.forEach((fn) => fn(["forged-identity"])));
+    expect(screen.queryByTestId("talker-user-2")).toBeNull();
   });
 
   it("shows a disabled button and the crew name when voice is off", async () => {

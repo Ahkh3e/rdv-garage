@@ -1,8 +1,7 @@
-import type { Backend, ChannelLike } from "@rdv/core";
+import type { Backend } from "@rdv/core";
 import { codeOf } from "@rdv/core/errors";
 import { createStore, type Store } from "@rdv/core/store";
 import type { Voice, VoiceStatus } from "@rdv/core/voice";
-import { emptyPeople, reducePeople, type People } from "./people";
 import { createTalkTimer } from "./talkTimer";
 
 export type Phase = "idle" | "joining" | "listening" | "reconnecting" | "unavailable" | "removed" | "left";
@@ -18,7 +17,9 @@ export interface WalkieState {
   limitReached: boolean;
   soundMuted: boolean;
   mic: MicPermission;
-  people: People;
+  // Everyone else in the voice room and everyone else being heard, as user ids. Both come from the audio service and
+  // the server-issued roster, never from anything a member sends.
+  present: string[];
   audible: string[];
   error: string | null;
 }
@@ -34,7 +35,7 @@ export interface Timers {
 }
 
 export interface WalkieDeps {
-  backend: Pick<Backend, "invoke" | "channel">;
+  backend: Pick<Backend, "invoke">;
   voice: Voice;
   userId(): string | null;
   indicator: RoomIndicator;
@@ -55,7 +56,10 @@ export interface WalkieController {
   setSoundMuted(muted: boolean): void;
   // Leave the channel but stay in the room screen; rejoin() comes back.
   leaveChannel(): Promise<void>;
-  rejoin(): void;
+  // True when it rejoined, false when there was nothing to rejoin.
+  rejoin(): boolean;
+  // The room's membership changed: refresh the roster that maps audio participants to people.
+  rosterChanged(): void;
   dispose(): void;
 }
 
@@ -65,16 +69,19 @@ interface TokenResponse {
   can_publish: boolean;
   expires_in: number;
   voice_off_crews?: string[];
+  identities?: Record<string, string>;
 }
 
 export const FATAL_CODES = new Set(["not_room_member", "room_closed", "room_not_found", "suspended", "unauthenticated"]);
+const REJOIN_PHASES = new Set<Phase>(["left", "removed", "unavailable"]);
 export const REFRESH_MARGIN_MS = 60_000;
-export const RETRY_MS = [1_000, 3_000, 8_000, 15_000];
-export const HEARTBEAT_MS = 30_000;
+export const RETRY_MS = [1_000, 3_000, 8_000, 15_000, 30_000];
+export const BUSY_MS = [5_000, 10_000, 20_000, 40_000, 60_000];
+export const ROSTER_MIN_GAP_MS = 15_000;
 
 const initial: WalkieState = {
   roomId: null, roomName: "", phase: "idle", canPublish: false, voiceOffCrews: [], talking: false, limitReached: false,
-  soundMuted: false, mic: "unknown", people: emptyPeople, audible: [], error: null,
+  soundMuted: false, mic: "unknown", present: [], audible: [], error: null,
 };
 
 const realTimers: Timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) };
@@ -88,11 +95,16 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
   const holders: { key: number; roomId: string; name: string }[] = [];
   let seq = 0;
   let epoch = 0;
-  let channel: ChannelLike | null = null;
-  let channelReady = false;
+  let roster: Record<string, string> = {};
+  let rawSpeakers: string[] = [];
+  let rawParticipants: string[] = [];
+  let rawLevels: Record<string, number> = {};
+  let lastFetchAt = 0;
+  const unknownSeen = new Set<string>();
+  let rosterHandle: unknown = null;
+  let refreshFailures = 0;
   let refreshHandle: unknown = null;
   let retryHandle: unknown = null;
-  let tickHandle: unknown = null;
   let pendingDisconnect: Promise<void> = Promise.resolve();
   let ignoreDisconnect = false;
   let held = false;
@@ -100,32 +112,44 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
   const patch = (next: Partial<WalkieState>) => state.set((s) => ({ ...s, ...next }));
   const timer = createTalkTimer(() => void release(), undefined, { set: (fn, ms) => timers.set(fn, ms), clear: (h) => timers.clear(h) });
 
-  const emit = (event: string, extra: Record<string, unknown> = {}) => {
+  const mapIdentities = (identities: string[]) => {
     const me = deps.userId();
-    if (!channel || !channelReady || !me) return;
-    channel.send(event, { user_id: me, identity: voice.identity(), ...extra }).catch(() => undefined);
-  };
-
-  const identityOwners = (): Record<string, string> => {
-    const out: Record<string, string> = {};
-    const { speakers, present } = state.get().people;
-    for (const map of [present, speakers]) for (const [userId, p] of Object.entries(map)) if (p.identity) out[p.identity] = userId;
+    const out: string[] = [];
+    let unknown = false;
+    for (const identity of identities) {
+      const owner = roster[identity];
+      if (!owner) {
+        if (!unknownSeen.has(identity)) unknown = true;
+        unknownSeen.add(identity);
+      }
+      else if (owner !== me && !out.includes(owner)) out.push(owner);
+    }
+    if (unknown) rosterChanged();
     return out;
   };
-
-  voice.onLevels((byIdentity) => {
-    const owners = identityOwners();
+  const showPeople = () => {
+    patch({ present: mapIdentities(rawParticipants), audible: mapIdentities(rawSpeakers) });
+  };
+  const showLevels = () => {
     const next: Record<string, number> = {};
-    const me = deps.userId();
-    for (const [identity, level] of Object.entries(byIdentity)) {
-      const owner = identity === voice.identity() ? me : owners[identity];
+    for (const [identity, level] of Object.entries(rawLevels)) {
+      const owner = roster[identity];
       if (owner) next[owner] = level;
     }
     levels.set(next);
+  };
+
+  voice.onLevels((byIdentity) => {
+    rawLevels = byIdentity;
+    showLevels();
   });
   voice.onSpeakers((identities) => {
-    const owners = identityOwners();
-    patch({ audible: identities.map((i) => owners[i]).filter((u): u is string => !!u) });
+    rawSpeakers = identities;
+    showPeople();
+  });
+  voice.onParticipants((identities) => {
+    rawParticipants = identities;
+    showPeople();
   });
   voice.onStatus((status: VoiceStatus) => {
     const s = state.get();
@@ -135,39 +159,15 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
     else if (status === "disconnected" && (s.phase === "listening" || s.phase === "reconnecting")) void recover();
   });
 
-  const hearPeople = (type: "start" | "stop" | "join" | "here" | "leave") => (payload: unknown) => {
-    const p = payload as { user_id?: unknown; identity?: unknown } | null;
-    const userId = typeof p?.user_id === "string" ? p.user_id : null;
-    if (!userId || userId === deps.userId()) return;
-    const identity = typeof p?.identity === "string" ? p.identity : null;
-    state.set((s) => ({ ...s, people: reducePeople(s.people, { type, userId, identity, at: now() }) }));
-    if (type === "join") {
-      emit("here");
-      if (state.get().talking) emit("start");
-    }
-  };
-
-  const openChannel = (roomId: string) => {
-    const ch = backend.channel(`walkie:${roomId}`);
-    channel = ch;
-    channelReady = false;
-    for (const type of ["start", "stop", "join", "here", "leave"] as const) ch.on(type, hearPeople(type));
-    ch.subscribe((status) => {
-      if (channel !== ch) return;
-      channelReady = status === "SUBSCRIBED";
-      if (channelReady) emit("join");
-    });
-    tickHandle = timers.set(function tick() {
-      if (channel !== ch) return;
-      state.set((s) => ({ ...s, people: reducePeople(s.people, { type: "expire", at: now() }) }));
-      emit("here");
-      tickHandle = timers.set(tick, HEARTBEAT_MS);
-    }, HEARTBEAT_MS);
+  const applyRoster = (t: TokenResponse) => {
+    roster = { ...(t.identities ?? {}) };
+    showPeople();
+    showLevels();
   };
 
   const clearTimers = () => {
-    for (const h of [refreshHandle, retryHandle, tickHandle]) if (h !== null) timers.clear(h);
-    refreshHandle = retryHandle = tickHandle = null;
+    for (const h of [refreshHandle, retryHandle, rosterHandle]) if (h !== null) timers.clear(h);
+    refreshHandle = retryHandle = rosterHandle = null;
   };
 
   const disconnectVoice = () => {
@@ -188,7 +188,6 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
     timer.stop();
     if (!state.get().talking) return;
     patch({ talking: false });
-    emit("stop");
     await voice.setMicOpen(false).catch(() => undefined);
   };
 
@@ -197,11 +196,13 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
     epoch++;
     clearTimers();
     void closeMic();
-    emit("leave");
-    const ch = channel;
-    channel = null;
-    channelReady = false;
-    if (ch) setTimeout(() => void ch.unsubscribe().catch(() => undefined), 0);
+    roster = {};
+    rawSpeakers = [];
+    rawParticipants = [];
+    rawLevels = {};
+    refreshFailures = 0;
+    lastFetchAt = 0;
+    unknownSeen.clear();
     if (wasIn) {
       disconnectVoice();
       void indicator.hide().catch(() => undefined);
@@ -221,21 +222,26 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
 
   const sleep = (ms: number) => new Promise<void>((resolve) => { retryHandle = timers.set(() => { retryHandle = null; resolve(); }, ms); });
 
-  async function join(roomId: string, my: number, first: boolean) {
-    for (let attempt = 0; ; attempt++) {
+  async function join(roomId: string, my: number, first: boolean, preset?: TokenResponse) {
+    let given = preset;
+    let attempt = 0;
+    let busy = 0;
+    for (;;) {
       if (my !== epoch) return;
       try {
-        const t = await backend.invoke<TokenResponse>("walkie_token", { room_id: roomId });
+        const t = given ?? (await fetchToken(roomId));
+        given = undefined;
         if (my !== epoch) return;
         await pendingDisconnect;
         if (my !== epoch) return;
         await voice.connect({ url: t.url, token: t.token });
         if (my !== epoch) return;
         voice.setSoundMuted(state.get().soundMuted);
+        applyRoster(t);
+        refreshFailures = 0;
         patch({ phase: "listening", canPublish: t.can_publish, voiceOffCrews: t.voice_off_crews ?? [], error: null });
-        scheduleRefresh(roomId, my, t.expires_in);
+        scheduleRefresh(roomId, my, t.expires_in * 1000 - REFRESH_MARGIN_MS);
         if (first) void indicator.show(state.get().roomName).catch(() => undefined);
-        emit("join");
         return;
       } catch (e) {
         if (my !== epoch) return;
@@ -245,38 +251,61 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
           return;
         }
         patch({ phase: "unavailable", error: code });
-        await sleep(RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]!);
+        const wait = code === "rate_limited" ? BUSY_MS[Math.min(busy++, BUSY_MS.length - 1)]! : RETRY_MS[Math.min(attempt++, RETRY_MS.length - 1)]!;
+        await sleep(wait);
       }
     }
   }
 
-  function scheduleRefresh(roomId: string, my: number, expiresIn: number) {
+  async function fetchToken(roomId: string) {
+    lastFetchAt = now();
+    return backend.invoke<TokenResponse>("walkie_token", { room_id: roomId });
+  }
+
+  function scheduleRefresh(roomId: string, my: number, ms: number) {
     if (refreshHandle !== null) timers.clear(refreshHandle);
-    refreshHandle = timers.set(() => void refresh(roomId, my), Math.max(15_000, expiresIn * 1000 - REFRESH_MARGIN_MS));
+    refreshHandle = timers.set(() => void refresh(roomId, my), Math.max(15_000, ms));
   }
 
   async function refresh(roomId: string, my: number) {
     if (my !== epoch) return;
     try {
-      const t = await backend.invoke<TokenResponse>("walkie_token", { room_id: roomId });
+      const t = await fetchToken(roomId);
       if (my !== epoch) return;
+      refreshFailures = 0;
       const changed = t.can_publish !== state.get().canPublish;
       patch({ voiceOffCrews: t.voice_off_crews ?? [] });
+      applyRoster(t);
       if (changed) {
         if (!t.can_publish) await closeMic();
-        await recover();
+        await recover(t);
         return;
       }
-      scheduleRefresh(roomId, my, t.expires_in);
+      scheduleRefresh(roomId, my, t.expires_in * 1000 - REFRESH_MARGIN_MS);
     } catch (e) {
       if (my !== epoch) return;
-      if (FATAL_CODES.has(codeOf(e))) teardown("removed", codeOf(e));
-      else scheduleRefresh(roomId, my, 0);
+      const code = codeOf(e);
+      if (FATAL_CODES.has(code)) teardown("removed", code);
+      else scheduleRefresh(roomId, my, code === "rate_limited" ? BUSY_MS[Math.min(refreshFailures++, BUSY_MS.length - 1)]! : 15_000);
     }
   }
 
-  // The connection dropped, or the grants changed: close the microphone and join again with a fresh token.
-  async function recover() {
+  // Joined people change without a token refresh (someone is added or leaves): fetch the roster again, not oftener than
+  // the minimum gap.
+  function rosterChanged() {
+    const roomId = state.get().roomId;
+    if (!roomId || state.get().phase !== "listening" || rosterHandle !== null) return;
+    const wait = Math.max(0, lastFetchAt + ROSTER_MIN_GAP_MS - now());
+    const my = epoch;
+    rosterHandle = timers.set(() => {
+      rosterHandle = null;
+      void refresh(roomId, my);
+    }, wait);
+  }
+
+  // The connection dropped, or the grants changed: close the microphone and join again, with the fresh token when the
+  // caller already holds one.
+  async function recover(fresh?: TokenResponse) {
     const roomId = state.get().roomId;
     if (!roomId) return;
     const my = ++epoch;
@@ -284,14 +313,13 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
     await closeMic();
     patch({ phase: "reconnecting" });
     disconnectVoice();
-    await join(roomId, my, false);
+    await join(roomId, my, false, fresh);
   }
 
   function begin(roomId: string, name: string) {
     teardown("idle");
     const my = epoch;
     state.set((s) => ({ ...s, roomId, roomName: name, phase: "joining" }));
-    openChannel(roomId);
     void join(roomId, my, true);
   }
 
@@ -330,7 +358,6 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
           return;
         }
         patch({ talking: true });
-        emit("start");
         timer.start();
       },
       () => {
@@ -375,9 +402,11 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
     },
     rejoin() {
       const want = holders.at(-1);
-      if (!want || state.get().phase !== "left" && state.get().phase !== "removed" && state.get().phase !== "unavailable") return;
+      if (!want || !REJOIN_PHASES.has(state.get().phase)) return false;
       begin(want.roomId, want.name);
+      return true;
     },
+    rosterChanged,
     dispose() {
       holders.length = 0;
       teardown("idle");

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { statusLine } from "./lines";
 import { AppError } from "@rdv/core/errors";
 import type { Voice, VoiceStatus } from "@rdv/core/voice";
-import { createWalkie, RETRY_MS, type WalkieController, type WalkieDeps } from "./controller";
+import { BUSY_MS, createWalkie, RETRY_MS, type WalkieController, type WalkieDeps } from "./controller";
 
 class FakeVoice implements Voice {
   calls: string[] = [];
@@ -11,6 +12,7 @@ class FakeVoice implements Voice {
   me = "ident-me";
   statusFns = new Set<(s: VoiceStatus) => void>();
   speakerFns = new Set<(i: string[]) => void>();
+  participantFns = new Set<(i: string[]) => void>();
   levelFns = new Set<(l: Record<string, number>) => void>();
   async connect(join: { url: string; token: string }) { this.calls.push(`connect:${join.token}`); }
   async disconnect() { this.calls.push("disconnect"); }
@@ -24,29 +26,17 @@ class FakeVoice implements Voice {
   identity() { return this.me; }
   onStatus(fn: (s: VoiceStatus) => void) { this.statusFns.add(fn); return () => this.statusFns.delete(fn); }
   onSpeakers(fn: (i: string[]) => void) { this.speakerFns.add(fn); return () => this.speakerFns.delete(fn); }
+  onParticipants(fn: (i: string[]) => void) { this.participantFns.add(fn); return () => this.participantFns.delete(fn); }
   onLevels(fn: (l: Record<string, number>) => void) { this.levelFns.add(fn); return () => this.levelFns.delete(fn); }
   status(s: VoiceStatus) { this.statusFns.forEach((f) => f(s)); }
 }
 
-class FakeChannel {
-  handlers: Record<string, (p: unknown) => void> = {};
-  sent: { event: string; payload: Record<string, unknown> }[] = [];
-  closed = false;
-  constructor(readonly name: string) {}
-  on(event: string, fn: (p: unknown) => void) { this.handlers[event] = fn; }
-  subscribe(cb?: (s: "SUBSCRIBED") => void) { cb?.("SUBSCRIBED"); }
-  async send(event: string, payload: Record<string, unknown>) { this.sent.push({ event, payload }); }
-  async track() {}
-  async untrack() {}
-  async unsubscribe() { this.closed = true; }
-  events() { return this.sent.map((s) => s.event); }
-}
+type Reply = { token?: string; can_publish?: boolean; expires_in?: number; voice_off_crews?: string[]; identities?: Record<string, string> } | Error;
 
-type Reply = { token?: string; can_publish?: boolean; expires_in?: number; voice_off_crews?: string[] } | Error;
+const ROSTER = { "ident-me": "me", "ident-1": "u1", "ident-2": "u2" };
 
 function harness(replies: Reply[] = []) {
   const voice = new FakeVoice();
-  const channels: FakeChannel[] = [];
   const invocations: Record<string, unknown>[] = [];
   const queue = [...replies];
   const indicator = { shown: [] as string[], hidden: 0, async show(name: string) { this.shown.push(name); }, async hide() { this.hidden++; } };
@@ -62,13 +52,12 @@ function harness(replies: Reply[] = []) {
         invocations.push(body ?? {});
         const next = queue.shift() ?? {};
         if (next instanceof Error) throw next;
-        return { token: `t${invocations.length}`, url: "wss://x", can_publish: true, expires_in: 300, ...next } as never;
+        return { token: `t${invocations.length}`, url: "wss://x", can_publish: true, expires_in: 300, identities: ROSTER, ...next } as never;
       },
-      channel(name: string) { const c = new FakeChannel(name); channels.push(c); return c as never; },
     },
   };
   const walkie = createWalkie(deps);
-  return { walkie, voice, channels, invocations, indicator, setExplain: (v: boolean) => (explain = v) };
+  return { walkie, voice, invocations, indicator, setExplain: (v: boolean) => (explain = v) };
 }
 
 const settle = async () => { await vi.advanceTimersByTimeAsync(0); };
@@ -85,7 +74,6 @@ describe("joining", () => {
     expect(h.invocations).toEqual([{ room_id: "r1" }]);
     expect(h.voice.calls).toContain("connect:t1");
     expect(phase(h.walkie)).toBe("listening");
-    expect(h.channels[0]!.name).toBe("walkie:r1");
     expect(h.indicator.shown).toEqual(["Night run"]);
     expect(h.voice.mic).toBe(false);
     release();
@@ -93,8 +81,6 @@ describe("joining", () => {
     expect(phase(h.walkie)).toBe("idle");
     expect(h.voice.calls.at(-1)).toBe("disconnect");
     expect(h.indicator.hidden).toBeGreaterThan(0);
-    expect(h.channels[0]!.events()).toContain("leave");
-    expect(h.channels[0]!.closed).toBe(true);
   });
 
   it("shares one channel between the components of one room", async () => {
@@ -119,7 +105,6 @@ describe("joining", () => {
     await settle();
     expect(h.walkie.state.get().roomId).toBe("r2");
     expect(h.invocations.map((i) => i.room_id)).toEqual(["r1", "r2"]);
-    expect(h.channels[0]!.closed).toBe(true);
     second();
     await settle();
     expect(h.walkie.state.get().roomId).toBe("r1");
@@ -135,6 +120,39 @@ describe("joining", () => {
     await vi.advanceTimersByTimeAsync(RETRY_MS[0]!);
     expect(phase(h.walkie)).toBe("listening");
     expect(h.invocations).toHaveLength(2);
+  });
+
+  it("treats rate_limited as busy, backing off to a minute without hammering", async () => {
+    const limited = () => new AppError("rate_limited");
+    const h = harness([limited(), limited(), limited(), limited(), limited(), limited(), limited(), {}]);
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    expect(h.walkie.state.get()).toMatchObject({ phase: "unavailable", error: "rate_limited" });
+    expect(statusLine(h.walkie.state.get())!.text).toBe("Busy, try again shortly.");
+    expect(h.invocations).toHaveLength(1);
+    let waited = 0;
+    for (let i = 1; i < BUSY_MS.length + 2; i++) {
+      const wait = BUSY_MS[Math.min(i - 1, BUSY_MS.length - 1)]!;
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(h.invocations).toHaveLength(i);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.invocations).toHaveLength(i + 1);
+      waited += wait;
+    }
+    expect(BUSY_MS.at(-1)).toBe(60_000);
+    expect(waited).toBeGreaterThan(60_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(phase(h.walkie)).toBe("listening");
+  });
+
+  it("caps ordinary retry backoff", async () => {
+    const down = () => new AppError("walkie_unavailable");
+    const h = harness(Array.from({ length: 8 }, down));
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    for (const wait of [...RETRY_MS, RETRY_MS.at(-1)!, RETRY_MS.at(-1)!]) await vi.advanceTimersByTimeAsync(wait);
+    expect(h.invocations).toHaveLength(8);
+    expect(Math.max(...RETRY_MS)).toBeLessThanOrEqual(30_000);
   });
 
   it("stops and reports removal when the server refuses membership", async () => {
@@ -159,6 +177,36 @@ describe("joining", () => {
     await settle();
     expect(phase(h.walkie)).toBe("listening");
     expect(h.invocations).toHaveLength(2);
+  });
+});
+
+describe("rejoin", () => {
+  it("rejoins only from left, removed or unavailable, and says when it did nothing", async () => {
+    const h = harness([{}, new AppError("walkie_unavailable"), {}]);
+    expect(h.walkie.rejoin()).toBe(false);
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.walkie.rejoin()).toBe(false);
+    expect(h.invocations).toHaveLength(1);
+    await h.walkie.leaveChannel();
+    expect(h.walkie.rejoin()).toBe(true);
+    await settle();
+    expect(phase(h.walkie)).toBe("unavailable");
+    expect(h.walkie.rejoin()).toBe(true);
+    await settle();
+    expect(phase(h.walkie)).toBe("listening");
+  });
+
+  it("does nothing while joining or when no room screen holds the channel", async () => {
+    const h = harness();
+    const release = h.walkie.acquire("r1", "Room");
+    expect(phase(h.walkie)).toBe("joining");
+    expect(h.walkie.rejoin()).toBe(false);
+    await settle();
+    release();
+    await settle();
+    expect(h.walkie.rejoin()).toBe(false);
   });
 });
 
@@ -195,6 +243,16 @@ describe("tokens and reconnects", () => {
     expect(phase(h.walkie)).toBe("listening");
   });
 
+  it("reconnects with the freshly fetched token when the refresh changes the grant", async () => {
+    const h = harness([{}, { can_publish: false, voice_off_crews: ["Night Run"] }]);
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    await vi.advanceTimersByTimeAsync(240_000);
+    expect(h.invocations).toHaveLength(2);
+    expect(h.voice.calls.filter((c) => c.startsWith("connect:"))).toEqual(["connect:t1", "connect:t2"]);
+    expect(h.walkie.state.get()).toMatchObject({ canPublish: false, voiceOffCrews: ["Night Run"], phase: "listening" });
+  });
+
   it("follows the service's own reconnecting and connected states", async () => {
     const h = harness();
     h.walkie.acquire("r1", "Room");
@@ -219,7 +277,7 @@ describe("tokens and reconnects", () => {
 });
 
 describe("talking", () => {
-  it("asks for the microphone on the first press, opens only while held, and sends start and stop", async () => {
+  it("asks for the microphone on the first press and opens only while held", async () => {
     const h = harness();
     h.walkie.acquire("r1", "Room");
     await settle();
@@ -227,11 +285,9 @@ describe("talking", () => {
     await h.walkie.press();
     expect(h.voice.calls.slice(-2)).toEqual(["permission", "mic-on"]);
     expect(h.walkie.state.get()).toMatchObject({ talking: true, mic: "granted" });
-    expect(h.channels[0]!.sent.find((s) => s.event === "start")!.payload).toEqual({ user_id: "me", identity: "ident-me" });
     await h.walkie.release();
     expect(h.voice.mic).toBe(false);
     expect(h.walkie.state.get().talking).toBe(false);
-    expect(h.channels[0]!.events().slice(-1)).toEqual(["stop"]);
     await h.walkie.press();
     expect(h.voice.calls.filter((c) => c === "permission")).toHaveLength(1);
   });
@@ -300,40 +356,59 @@ describe("talking", () => {
     await h.walkie.leaveChannel();
     await settle();
     expect(h.voice.mic).toBe(false);
-    expect(h.channels[0]!.events().slice(-2)).toEqual(["stop", "leave"]);
   });
 });
 
 describe("hearing others", () => {
-  it("shows who is talking from start and stop events and maps levels to them", async () => {
+  it("maps the audio service's speakers and levels to people with the server roster", async () => {
     const h = harness();
     h.walkie.acquire("r1", "Room");
     await settle();
-    const ch = h.channels[0]!;
-    ch.handlers.start!({ user_id: "u1", identity: "ident-1" });
-    ch.handlers.start!({ user_id: "u2", identity: "ident-2" });
-    ch.handlers.start!({ user_id: "me", identity: "ident-me" });
-    expect(Object.keys(h.walkie.state.get().people.speakers).sort()).toEqual(["u1", "u2"]);
     h.voice.levelFns.forEach((f) => f({ "ident-1": 0.5, "ident-2": 0.1, "ident-me": 0.7, unknown: 1 }));
     expect(h.walkie.levels.get()).toEqual({ u1: 0.5, u2: 0.1, me: 0.7 });
-    h.voice.speakerFns.forEach((f) => f(["ident-2", "stranger"]));
+    h.voice.speakerFns.forEach((f) => f(["ident-2", "ident-me"]));
     expect(h.walkie.state.get().audible).toEqual(["u2"]);
-    ch.handlers.stop!({ user_id: "u1" });
-    expect(Object.keys(h.walkie.state.get().people.speakers)).toEqual(["u2"]);
-    ch.handlers.start!({ user_id: 5 });
-    expect(Object.keys(h.walkie.state.get().people.speakers)).toEqual(["u2"]);
+    h.voice.participantFns.forEach((f) => f(["ident-1", "ident-2"]));
+    expect(h.walkie.state.get().present).toEqual(["u1", "u2"]);
+    h.voice.speakerFns.forEach((f) => f([]));
+    expect(h.walkie.state.get().audible).toEqual([]);
   });
 
-  it("answers a join with its presence and repeats its start for a late joiner", async () => {
+  it("is not changed by anything a member sends: only the audio service and the roster decide", async () => {
     const h = harness();
     h.walkie.acquire("r1", "Room");
     await settle();
-    await h.walkie.press();
-    const ch = h.channels[0]!;
-    ch.sent.length = 0;
-    ch.handlers.join!({ user_id: "u9", identity: "ident-9" });
-    expect(ch.events()).toEqual(["here", "start"]);
-    expect(Object.keys(h.walkie.state.get().people.present)).toEqual(["u9"]);
+    h.voice.speakerFns.forEach((f) => f(["forged-identity"]));
+    expect(h.walkie.state.get().audible).toEqual([]);
+    h.voice.speakerFns.forEach((f) => f(["ident-1"]));
+    expect(h.walkie.state.get().audible).toEqual(["u1"]);
+  });
+
+  it("refreshes the roster once for an unknown participant and learns a newcomer from it", async () => {
+    const h = harness([{}, { identities: { ...ROSTER, "ident-9": "u9" } }]);
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    h.voice.speakerFns.forEach((f) => f(["ident-9"]));
+    expect(h.walkie.state.get().audible).toEqual([]);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(h.invocations).toHaveLength(2);
+    expect(h.walkie.state.get().audible).toEqual(["u9"]);
+    h.voice.speakerFns.forEach((f) => f(["ident-9", "ghost"]));
+    h.voice.speakerFns.forEach((f) => f(["ghost"]));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.invocations).toHaveLength(3);
+  });
+
+  it("refreshes the roster on request, not oftener than the minimum gap", async () => {
+    const h = harness();
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    h.walkie.rosterChanged();
+    h.walkie.rosterChanged();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.invocations).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(h.invocations).toHaveLength(2);
   });
 
   it("applies the mute-room-sound setting to the service and keeps it across rooms", async () => {
