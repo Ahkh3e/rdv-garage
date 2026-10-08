@@ -1,6 +1,11 @@
 import type { ExpoConfig } from "expo/config";
 
-const linkDomain = process.env.EXPO_PUBLIC_LINK_DOMAIN ?? "links.rdvgarage.example";
+type Env = Record<string, string | undefined>;
+
+export function buildConfig(env: Env): ExpoConfig {
+const linkDomain = env.EXPO_PUBLIC_LINK_DOMAIN ?? "links.rdvgarage.example";
+const freeAppleId = env.RDV_FREE_APPLE_ID === "1";
+const iosBundleId = env.RDV_BUNDLE_ID || "app.rdvgarage.mobile";
 
 const config: ExpoConfig = {
   name: "RDV Garage",
@@ -13,10 +18,10 @@ const config: ExpoConfig = {
   icon: "./assets/icon.png",
   ios: {
     supportsTablet: false,
-    bundleIdentifier: "app.rdvgarage.mobile",
-    associatedDomains: [`applinks:${linkDomain}`],
+    bundleIdentifier: iosBundleId,
+    ...(freeAppleId ? {} : { associatedDomains: [`applinks:${linkDomain}`] }),
     // Needed so the secure store (keychain) works in simulator builds as well as device builds.
-    entitlements: { "keychain-access-groups": ["$(AppIdentifierPrefix)app.rdvgarage.mobile"] },
+    entitlements: { "keychain-access-groups": [`$(AppIdentifierPrefix)${iosBundleId}`] },
     infoPlist: {
       UIBackgroundModes: ["location", "audio", "voip"],
       LSApplicationQueriesSchemes: ["waze", "comgooglemaps"],
@@ -58,6 +63,7 @@ const config: ExpoConfig = {
     ],
   },
   plugins: [
+    ...(freeAppleId ? ["./plugins/withFreeAppleId"] : []),
     "expo-secure-store",
     ["expo-notifications", { color: "#2F6FF2" }],
     "expo-live-activity",
@@ -82,9 +88,12 @@ const config: ExpoConfig = {
     "./plugins/withWalkie",
   ],
   extra: {
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321",
+    supabaseUrl: env.EXPO_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321",
     linkDomain,
   },
 };
 
-export default config;
+return config;
+}
+
+export default buildConfig(process.env);
