@@ -79,7 +79,7 @@ export function liveKitAdmin(cfg: LiveKitConfig, doFetch: typeof fetch = fetch):
     const jwt = await mintToken(cfg, "walkie-server", { room, roomAdmin: true }, Math.floor(Date.now() / 1000), 60);
     const res = await doFetch(`${httpBase(cfg.url)}/twirp/livekit.RoomService/${method}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}`, "User-Agent": "Rendezview-walkie-server" },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     });
