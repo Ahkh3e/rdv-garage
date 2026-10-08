@@ -1,4 +1,4 @@
-import type { CrewSummary, Shell } from "@rdv/core";
+import type { CrewRole, CrewSummary, Shell } from "@rdv/core";
 
 interface CrewRow {
   id: string;
@@ -6,10 +6,10 @@ interface CrewRow {
   description: string | null;
   avatar_path: string | null;
   owner_id: string;
-  role: "owner" | "member";
+  role: CrewRole;
   link_code: string | null;
   selected: boolean;
-  members: { user_id: string; handle: string; avatar_path: string | null; car_icon?: string; role: "owner" | "member"; live: boolean }[];
+  members: { user_id: string; handle: string; avatar_path: string | null; car_icon?: string; role: CrewRole; live: boolean }[];
 }
 
 export async function loadCrews(shell: Shell): Promise<void> {

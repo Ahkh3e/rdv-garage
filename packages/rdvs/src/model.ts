@@ -112,7 +112,7 @@ export const canCancel = (rdv: Rdv, userId: string | null, crews: Pick<CrewSumma
   !!userId &&
   rdv.status === "scheduled" &&
   !hasEnded(rdv, now) &&
-  (rdv.hostId === userId || crews.some((c) => c.role === "owner" && rdv.crewIds.includes(c.id)));
+  (rdv.hostId === userId || crews.some((c) => c.role !== "member" && rdv.crewIds.includes(c.id)));
 
 export const byStart = (a: Rdv, b: Rdv) => a.startsAt - b.startsAt || a.id.localeCompare(b.id);
 

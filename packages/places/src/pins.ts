@@ -43,7 +43,7 @@ export const pinFromRow = (row: PinRow): Pin => ({
 export const unexpired = (pins: Pin[], now: number) => pins.filter((pin) => pin.expiresAt > now);
 
 export const canRemove = (pin: Pin, userId: string, crews: Pick<CrewSummary, "id" | "role">[]) =>
-  pin.dropperId === userId || crews.some((crew) => crew.role === "owner" && pin.crewIds.includes(crew.id));
+  pin.dropperId === userId || crews.some((crew) => crew.role !== "member" && pin.crewIds.includes(crew.id));
 
 export const placeOfPin = (pin: Pin): Place => ({ name: pin.label, kind: "Pin", address: pin.address, lat: pin.lat, lng: pin.lng });
 
