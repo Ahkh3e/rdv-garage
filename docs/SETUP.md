@@ -72,6 +72,40 @@ The code is complete for 0.0.1. These are the accounts, keys, and one-time steps
 - Walkie-talkie: on iPhone a Live Activity shows "In a room" while you are in a room's channel; Live Activities have no button, so Leave is on the room screen. On Android a foreground service notification (Notifee) shows "In a room" with a Leave action, and needs the microphone foreground service permission that the config plugin adds. The iPhone `voip` background mode in `app.config.ts` is what the spec asks for; confirm it with Apple's review guidance before submission.
 - Friend-goes-live notifications work while the app is running. A notification when the app is closed needs **push**: an Apple Push key and Firebase credentials registered with EAS, plus the server pieces in the spec repo's `docs/features/notifications.md`. That is not built yet.
 
+## Install on your own iPhone with a free Apple ID
+
+For the owner's own phone, with no paid Apple account. It builds a Release app (the JavaScript is embedded, so no Metro or Wi-Fi is needed to run it) that talks to the project named in `apps/mobile/.env`; the script prints a note, never the values.
+
+Before the first run:
+
+1. Phone: Settings, Privacy & Security, Developer Mode (bottom of the page), turn on, restart, then confirm Turn On and enter the passcode.
+2. Mac: Xcode, Settings, Accounts, add your Apple ID. Open `apps/mobile/ios/RDVGarage.xcworkspace` once, select the RDVGarage target, Signing & Capabilities, and pick your Personal Team. (If the project does not exist yet, run the command below once; it stops at this step.)
+3. Plug the phone in with a cable, unlock it, and tap Trust.
+4. `apps/mobile/.env` has `EXPO_PUBLIC_SUPABASE_URL`.
+
+Then, from the repo root:
+
+```
+scripts/install-ios-device.sh            # the one connected iPhone, or pass its name or UDID
+scripts/install-ios-device.sh --dry-run  # checks and prints the steps, builds nothing
+```
+
+The script checks Xcode, the phone, Developer Mode and the team (`DEVELOPMENT_TEAM` if set, else your Apple Development certificate), generates the iOS project with `RDV_FREE_APPLE_ID=1`, builds, installs and launches. Run it again any time; it reuses the generated project and `--clean` regenerates it. If your free team cannot register `app.rdvgarage.mobile` (someone else owns it), set `RDV_BUNDLE_ID=app.rdvgarage.<yourname>`; the Live Activity extension follows (`<id>.LiveActivity`). The first launch may ask you to trust your Apple ID under Settings, General, VPN & Device Management.
+
+What `RDV_FREE_APPLE_ID=1` changes: Associated Domains and the Push Notifications entitlement are left out, because a free team cannot provision either. Everything else stays: location, the microphone, background audio and voip modes, the Live Activity.
+
+What the free account cannot do:
+
+- Invite, crew and reset links do not open the app. Open the link in Safari, copy the code, and type it into the app.
+- Remote push does not work. Friend-goes-live notifications arrive only while the app is running.
+- The install expires after 7 days and the app stops opening. Reinstall by running the script again with the phone plugged in; your data lives on the server, so signing in again is enough.
+- Every install goes over the cable, one phone at a time. There is no over-the-air sharing.
+- A free team can create about 10 app ids per week, and each build with the Live Activity uses two (the app and `.LiveActivity`). Keep the same bundle id rather than changing it.
+
+Reading a failure: the script prints `BLOCKED:` with the fix for each missing prerequisite. If the build fails, run it again and read the first `error:` line from `xcodebuild`; "No profiles" or "not registered" means the team or bundle id (pick the Personal Team in Xcode, or set `RDV_BUNDLE_ID`), "Communication with Apple failed" means Xcode is not signed in, and "device is locked" means unlock the phone and retry.
+
+Android: `cd apps/mobile && npx expo run:android --variant release` with the phone's USB debugging on. No account is needed and the install does not expire.
+
 ## 4. Link pages (Cloudflare Pages)
 
 1. Create a Pages project from this repo. Build command `node web/build.mjs`, output directory `web/dist`, environment variable `NODE_VERSION=24`.
