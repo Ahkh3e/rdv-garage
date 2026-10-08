@@ -7,7 +7,7 @@ export interface VoiceJoin {
   token: string;
 }
 
-// Live audio for a room (decision 0027). One implementation sits behind it so the service can be replaced or self-hosted.
+// Live audio for a room. One implementation sits behind it (the voice relay) so the transport can be replaced.
 export interface Voice {
   // Joins the room named by the token, listening. The microphone stays closed until setMicOpen(true).
   connect(join: VoiceJoin): Promise<void>;
@@ -18,7 +18,7 @@ export interface Voice {
   requestMicPermission(): Promise<boolean>;
   // Silences what the person hears without leaving the channel.
   setSoundMuted(muted: boolean): void;
-  // The audio service's id for this device, or null before connecting.
+  // The relay's id for this device, or null before connecting.
   identity(): string | null;
   onStatus(fn: (status: VoiceStatus) => void): Unsubscribe;
   // Participant ids of whoever the service currently hears speaking.

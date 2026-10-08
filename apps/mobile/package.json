@@ -7,9 +7,6 @@
     "@expo-google-fonts/inter-tight": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
-    "@livekit/react-native": "^3.0.0",
-    "@livekit/react-native-expo-plugin": "^1.0.3",
-    "@livekit/react-native-webrtc": "^144.2.0",
     "@maplibre/maplibre-react-native": "^11.5.0",
     "@notifee/react-native": "^9.1.8",
     "@rdv/accounts": "workspace:*",
@@ -49,14 +46,15 @@
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "expo-task-manager": "~57.0.21",
-    "livekit-client": "^2.19.0",
     "react": "19.2.3",
     "react-native": "0.86.3",
+    "react-native-audio-api": "^0.13.6",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
-    "react-native-url-polyfill": "^4.0.0"
+    "react-native-url-polyfill": "^4.0.0",
+    "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
     "@testing-library/react-native": "^14.0.1",

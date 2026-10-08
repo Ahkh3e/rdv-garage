@@ -7,7 +7,8 @@ import type { Voice } from "@rdv/core/voice";
 import { createWalkie, type RoomIndicator, type WalkieController } from "./controller";
 import { setKit } from "./context";
 import { createRoomIndicator } from "./indicator";
-import { createLiveKitVoice } from "./livekit";
+import { createAudioApiEngine } from "./audioEngine";
+import { createRelayVoice } from "./relayVoice";
 import { WalkieStatus } from "./WalkieStatus";
 import { MIC_EXPLANATION } from "./lines";
 import { TalkButton } from "./Talk";
@@ -50,7 +51,7 @@ export function createWalkieModule(overrides: WalkieOverrides = {}): Module {
       const indicator = overrides.indicator ?? createRoomIndicator(() => void holder.walkie?.leaveChannel());
       const walkie = createWalkie({
         backend: shell.backend,
-        voice: overrides.voice ?? createLiveKitVoice(),
+        voice: overrides.voice ?? createRelayVoice({ engine: createAudioApiEngine() }),
         userId: () => shell.backend.userId(),
         indicator,
         explainMic: overrides.explainMic ?? explainMic,

@@ -18,7 +18,7 @@ const config: ExpoConfig = {
     // Needed so the secure store (keychain) works in simulator builds as well as device builds.
     entitlements: { "keychain-access-groups": ["$(AppIdentifierPrefix)app.rdvgarage.mobile"] },
     infoPlist: {
-      UIBackgroundModes: ["location", "audio", "voip"],
+      UIBackgroundModes: ["location", "audio"],
       LSApplicationQueriesSchemes: ["waze", "comgooglemaps"],
       NSLocationWhenInUseUsageDescription: "RDV Garage shows you on the map and follows you while you drive.",
       NSLocationAlwaysAndWhenInUseUsageDescription:
@@ -78,7 +78,23 @@ const config: ExpoConfig = {
     ["expo-image-picker", { photosPermission: "Choose a profile photo." }],
     "@maplibre/maplibre-react-native",
     "./plugins/withMapsQueries",
-    "@livekit/react-native-expo-plugin",
+    [
+      "react-native-audio-api",
+      {
+        iosMicrophonePermission: "Rendezview uses the microphone only while you hold Talk in a room, so the people in the room can hear you.",
+        iosBackgroundMode: true,
+        androidPermissions: [
+          "android.permission.RECORD_AUDIO",
+          "android.permission.MODIFY_AUDIO_SETTINGS",
+          "android.permission.FOREGROUND_SERVICE",
+          "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+          "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        ],
+        androidForegroundService: true,
+        androidFSTypes: ["mediaPlayback", "microphone"],
+        disableFFmpeg: true,
+      },
+    ],
     "./plugins/withWalkie",
   ],
   extra: {
