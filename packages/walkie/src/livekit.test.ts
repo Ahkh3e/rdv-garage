@@ -124,7 +124,7 @@ describe("livekit connect", () => {
         super();
         rooms.push(this);
       }
-      async disconnect() {
+      override async disconnect() {
         if (rooms[0] === this) await new Promise<void>((r) => (release = r));
         m.log.push("room-disconnect");
       }
