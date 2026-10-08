@@ -2,7 +2,10 @@ import { View } from "react-native";
 import { Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar, Button, Card, Divider, Row, Screen, Slot, Text, colors, crewStyle, crewUrl, messageFor, useCrewState, useShell, useSession } from "@rdv/core";
+import type { CrewRole } from "@rdv/core";
 import { loadCrews } from "../data";
+
+const ROLE_LABELS: Record<CrewRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 
 export function CrewDetail({ navigation, route }: { navigation: any; route: { params: { id: string } } }) {
   const shell = useShell();
@@ -19,6 +22,7 @@ export function CrewDetail({ navigation, route }: { navigation: any; route: { pa
     );
   }
   const isOwner = crew.role === "owner";
+  const isModerator = crew.role !== "member";
   const style = crewStyle(crew.styleIndex);
 
   const run = async (action: () => Promise<unknown>, after?: () => void) => {
@@ -40,12 +44,17 @@ export function CrewDetail({ navigation, route }: { navigation: any; route: { pa
   const confirm = (title: string, message: string, onConfirm: () => void, label = "Confirm") =>
     Alert.alert(title, message, [{ text: "Cancel", style: "cancel" }, { text: label, style: "destructive", onPress: onConfirm }]);
 
-  const memberActions = (userId: string, handle: string) => {
-    if (!isOwner || userId === me) return;
+  const canManage = (userId: string, role: CrewRole) => userId !== me && (isOwner || (isModerator && role === "member"));
+
+  const memberActions = (userId: string, handle: string, role: CrewRole) => {
+    if (!canManage(userId, role)) return;
+    const rpc = (fn: string) => () => run(() => shell.backend.rpc("crews", fn, { p_crew: crew.id, p_user: userId }));
     Alert.alert(`@${handle}`, undefined, [
-      { text: "Make owner", onPress: () => confirm("Transfer ownership?", `@${handle} becomes the owner and you become a member.`, () => run(() => shell.backend.rpc("crews", "transfer_ownership", { p_crew: crew.id, p_user: userId })), "Transfer") },
-      { text: "Remove from crew", style: "destructive", onPress: () => confirm("Remove member?", `@${handle} will no longer see this crew.`, () => run(() => shell.backend.rpc("crews", "remove_member", { p_crew: crew.id, p_user: userId })), "Remove") },
-      { text: "Cancel", style: "cancel" },
+      ...(isOwner ? [{ text: "Make owner", onPress: () => confirm("Transfer ownership?", `@${handle} becomes the owner of ${crew.name}. You become a regular member, not an admin.`, rpc("transfer_ownership"), "Transfer") }] : []),
+      ...(isOwner && role === "member" ? [{ text: "Add admin", onPress: () => confirm("Add admin?", `@${handle} can remove members, cancel RDVs and remove pins for this crew.`, rpc("promote_admin"), "Add admin") }] : []),
+      ...(isOwner && role === "admin" ? [{ text: "Remove admin", onPress: () => confirm("Remove admin?", `@${handle} becomes a member.`, rpc("demote_admin"), "Remove admin") }] : []),
+      { text: "Remove from crew", style: "destructive" as const, onPress: () => confirm("Remove from crew", `Remove @${handle} from the crew?`, rpc("remove_member"), "Remove from crew") },
+      { text: "Cancel", style: "cancel" as const },
     ]);
   };
 
@@ -74,10 +83,10 @@ export function CrewDetail({ navigation, route }: { navigation: any; route: { pa
             {i > 0 ? <Divider /> : null}
             <Row
               title={`@${m.handle}${m.userId === me ? " (you)" : ""}`}
-              subtitle={`${m.role === "owner" ? "Owner" : "Member"}${m.live ? "  ·  Live now" : ""}`}
+              subtitle={`${ROLE_LABELS[m.role]}${m.live ? "  ·  Live now" : ""}`}
               left={<Avatar handle={m.handle} path={m.avatarPath} ring={m.live ? colors.accentBright : undefined} />}
-              right={isOwner && m.userId !== me ? <Ionicons name="ellipsis-horizontal" size={20} color={colors.muted} /> : undefined}
-              onPress={isOwner && m.userId !== me ? () => memberActions(m.userId, m.handle) : undefined}
+              right={canManage(m.userId, m.role) ? <Ionicons name="ellipsis-horizontal" size={20} color={colors.muted} /> : undefined}
+              onPress={canManage(m.userId, m.role) ? () => memberActions(m.userId, m.handle, m.role) : undefined}
             />
           </View>
         ))}

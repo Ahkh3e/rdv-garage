@@ -160,7 +160,7 @@ describe("removing pins", () => {
     const other = await createUser();
     await callOk(other.client, "crews", "join_crew", { p_link_code: crew.link_code });
     const id = await dropOk(owner, [crew.id]);
-    expect((await call(member.client, "places", "remove_pin", { p_pin: id })).error).toBe("not_owner");
+    expect((await call(member.client, "places", "remove_pin", { p_pin: id })).error).toBe("not_moderator");
     expect((await call(stranger.client, "places", "remove_pin", { p_pin: id })).error).toBe("pin_not_found");
     expect((await call(other.client, "places", "remove_pin", { p_pin: "00000000-0000-0000-0000-000000000000" })).error).toBe("pin_not_found");
     expect(await visibleIds(owner)).toContain(id);

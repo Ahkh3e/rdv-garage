@@ -126,7 +126,7 @@ describe("upcomingFor", () => {
 });
 
 describe("permissions", () => {
-  const crews = [{ id: "c1", role: "owner" as const }, { id: "c2", role: "member" as const }];
+  const crews = [{ id: "c1", role: "owner" as const }, { id: "c2", role: "member" as const }, { id: "c3", role: "admin" as const }];
   it("lets the host edit and the host or a crew owner cancel, until it ends", () => {
     expect(canEdit(rdv(), "host", NOW)).toBe(true);
     expect(canEdit(rdv(), "other", NOW)).toBe(false);
@@ -134,6 +134,7 @@ describe("permissions", () => {
     expect(canCancel(rdv(), "host", [], NOW)).toBe(true);
     expect(canCancel(rdv(), "other", crews, NOW)).toBe(true);
     expect(canCancel(rdv({ crewIds: ["c2"] }), "other", crews, NOW)).toBe(false);
+    expect(canCancel(rdv({ crewIds: ["c3"] }), "other", crews, NOW)).toBe(true);
     expect(canCancel(rdv({ endAt: NOW - 1 }), "host", crews, NOW)).toBe(false);
   });
 });

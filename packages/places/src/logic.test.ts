@@ -201,6 +201,8 @@ describe("pins", () => {
     expect(canRemove(pin, "u1", [])).toBe(true);
     expect(canRemove(pin, "u2", [{ id: "c1", role: "owner" }])).toBe(true);
     expect(canRemove(pin, "u2", [{ id: "c2", role: "owner" }])).toBe(false);
+    expect(canRemove(pin, "u2", [{ id: "c1", role: "admin" }])).toBe(true);
+    expect(canRemove(pin, "u2", [{ id: "c2", role: "admin" }])).toBe(false);
     expect(canRemove(pin, "u2", [{ id: "c1", role: "member" }])).toBe(false);
   });
   it("draws a pin glyph in the crew colour key", () => {

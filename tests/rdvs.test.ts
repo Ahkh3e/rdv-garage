@@ -322,7 +322,7 @@ describe("editing and cancelling", () => {
   it("lets the host or a crew owner cancel, and nobody else", async () => {
     const { member, owner, other, stranger, crew } = await setup();
     const id = await createOk(member, [crew.id]);
-    expect((await call(other.client, "rdvs", "cancel_rdv", { p_rdv: id })).error).toBe("not_owner");
+    expect((await call(other.client, "rdvs", "cancel_rdv", { p_rdv: id })).error).toBe("not_moderator");
     expect((await call(stranger.client, "rdvs", "cancel_rdv", { p_rdv: id })).error).toBe("rdv_not_found");
     expect((await find(member, [crew.id], id))!.status).toBe("scheduled");
     expect((await call(owner.client, "rdvs", "cancel_rdv", { p_rdv: id })).error).toBeNull();
