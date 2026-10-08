@@ -59,7 +59,7 @@ describe("crews", () => {
     await callOk(m1.client, "crews", "join_crew", { p_link_code: crew.link_code });
     await callOk(m2.client, "crews", "join_crew", { p_link_code: crew.link_code });
 
-    expect((await call(m1.client, "crews", "remove_member", { p_crew: crew.id, p_user: m2.id })).error).toBe("not_owner");
+    expect((await call(m1.client, "crews", "remove_member", { p_crew: crew.id, p_user: m2.id })).error).toBe("not_moderator");
     expect((await call(m1.client, "crews", "regenerate_crew_link", { p_crew: crew.id })).error).toBe("not_owner");
     expect((await call(owner.client, "crews", "leave_crew", { p_crew: crew.id })).error).toBe("owner_must_transfer");
 
