@@ -92,6 +92,8 @@ scripts/install-ios-device.sh --dry-run  # checks and prints the steps, builds n
 
 The script checks Xcode, the phone, Developer Mode and the team (`DEVELOPMENT_TEAM` if set, else your Apple Development certificate), generates the iOS project with `RDV_FREE_APPLE_ID=1`, builds, installs and launches. Run it again any time; it reuses the generated project and `--clean` regenerates it. If your free team cannot register `app.rdvgarage.mobile` (someone else owns it), set `RDV_BUNDLE_ID=app.rdvgarage.<yourname>`; the Live Activity extension follows (`<id>.LiveActivity`). The first launch may ask you to trust your Apple ID under Settings, General, VPN & Device Management.
 
+Xcode 27 builds adopt the UIScene lifecycle (`ios.enableSceneSupport` in `app.config.ts`, from `expo-build-properties`), which iOS 27 requires; without it the app crashes on launch. The generated project carries it in both modes, so after pulling this change run the script with `--clean` once. Expo SDK 58 includes this lifecycle, so remove the setting when upgrading.
+
 What `RDV_FREE_APPLE_ID=1` changes: Associated Domains and the Push Notifications entitlement are left out, because a free team cannot provision either. Everything else stays: location, the microphone, background audio and voip modes, the Live Activity.
 
 What the free account cannot do:

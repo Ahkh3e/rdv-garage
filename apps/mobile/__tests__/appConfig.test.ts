@@ -103,3 +103,15 @@ describe("generated entitlements (real Expo plugin pipeline)", () => {
     expect(ext).toEqual([{ targetName: "LiveActivity", bundleIdentifier: "app.rdvgarage.ahmed.LiveActivity", entitlements: {} }]);
   });
 });
+
+describe("iOS scene lifecycle (real Expo plugin pipeline)", () => {
+  const manifest = { UIApplicationSupportsMultipleScenes: false, UISceneConfigurations: { UIWindowSceneSessionRoleApplication: [{ UISceneConfigurationName: "Default Configuration", UISceneDelegateClassName: "EXExpoAppSceneDelegate" }] } };
+
+  it("enables expo-build-properties ios.enableSceneSupport", () => {
+    expect(buildConfig({}).plugins).toContainEqual(["expo-build-properties", { ios: { enableSceneSupport: true } }]);
+  });
+
+  it.each<Record<string, string>>([{}, { RDV_FREE_APPLE_ID: "1" }])("generated Info.plist has the scene manifest (%j)", (env) => {
+    expect(introspect(env).ios.infoPlist.UIApplicationSceneManifest).toEqual(manifest);
+  });
+});
