@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("react-native", () => ({ PermissionsAndroid: {}, Platform: { OS: "ios" } }));
+const ignoreLogs = vi.fn();
+vi.mock("react-native", () => ({ PermissionsAndroid: {}, Platform: { OS: "ios" }, LogBox: { ignoreLogs: (p: unknown) => ignoreLogs(p) } }));
 
 import { createLiveKitVoice } from "./livekit";
 

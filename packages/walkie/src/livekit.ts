@@ -1,4 +1,5 @@
-import { PermissionsAndroid, Platform } from "react-native";
+import { LogBox, PermissionsAndroid, Platform } from "react-native";
+import { EXPECTED_LIVEKIT_LOGS } from "./quiet";
 import type { Unsubscribe } from "@rdv/core/events";
 import type { Voice, VoiceJoin, VoiceStatus } from "@rdv/core/voice";
 
@@ -29,6 +30,8 @@ export function createLiveKitVoice(modules?: LiveKitModules): Voice {
     rn = require("@livekit/react-native");
     rn.registerGlobals();
     lk = require("livekit-client");
+    lk.setLogLevel?.(lk.LogLevel?.error ?? "error");
+    LogBox?.ignoreLogs?.(EXPECTED_LIVEKIT_LOGS);
   };
   const emit = (s: VoiceStatus) => status.forEach((fn) => fn(s));
   const applyMute = (publication: any) => publication?.setEnabled?.(!muted);
