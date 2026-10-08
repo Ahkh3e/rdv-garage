@@ -10,6 +10,7 @@ import { notifications } from "@rdv/notifications";
 import { places } from "@rdv/places";
 import { rdvs } from "@rdv/rdvs";
 import { referral } from "@rdv/referral";
+import { walkie } from "@rdv/walkie";
 
 // The one central list. Add a module by adding its entry; remove one by deleting its entry.
-export const modules: Module[] = [accounts, referral, crews, map, liveLocation, leaderboard, notifications, mapsHandoff, places, rdvs, chat];
+export const modules: Module[] = [accounts, referral, crews, map, liveLocation, leaderboard, notifications, mapsHandoff, places, rdvs, chat, walkie];
