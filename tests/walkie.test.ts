@@ -38,15 +38,17 @@ describe("walkie pure logic", () => {
   });
 
   it("calls the server API with an admin token and treats an absent target as removed", async () => {
-    const seen: { url: string; auth: string; body: unknown }[] = [];
+    const seen: { url: string; auth: string; agent: string; body: unknown }[] = [];
     const fake = (async (url: string, init: RequestInit) => {
-      seen.push({ url, auth: (init.headers as Record<string, string>).Authorization!, body: JSON.parse(init.body as string) });
+      const headers = init.headers as Record<string, string>;
+      seen.push({ url, auth: headers.Authorization!, agent: headers["User-Agent"]!, body: JSON.parse(init.body as string) });
       return new Response("{}", { status: seen.length === 2 ? 404 : 200 });
     }) as unknown as typeof fetch;
     const admin = liveKitAdmin({ url: "wss://x.example/", apiKey: "key", apiSecret: LIVEKIT_SECRET }, fake);
     await admin.removeParticipant(ROOM_A, "id1");
     await admin.deleteRoom(ROOM_A);
     expect(seen[0]!.url).toBe("https://x.example/twirp/livekit.RoomService/RemoveParticipant");
+    expect(seen[0]!.agent).toBe("Rendezview-walkie-server");
     expect(seen[0]!.body).toEqual({ room: ROOM_A, identity: "id1" });
     expect(seen[1]!.url).toBe("https://x.example/twirp/livekit.RoomService/DeleteRoom");
     const admin401 = liveKitAdmin({ url: "wss://x.example", apiKey: "key", apiSecret: LIVEKIT_SECRET }, (async () => new Response("no", { status: 401 })) as unknown as typeof fetch);
