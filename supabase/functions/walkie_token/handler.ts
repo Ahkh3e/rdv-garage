@@ -1,4 +1,4 @@
-import { type LiveKitConfig, listenerGrant, mintToken, participantIdentity, TOKEN_TTL_SECONDS } from "../_shared/walkie.ts";
+import { mintToken, participantIdentity, type RelayConfig, TOKEN_TTL_SECONDS } from "../_shared/walkie.ts";
 
 export interface Outcome {
   status: number;
@@ -13,7 +13,7 @@ export interface Access {
 }
 
 export interface TokenDeps {
-  livekit: LiveKitConfig | null;
+  relay: RelayConfig | null;
   identitySecret: string | null;
   access(roomId: string, userId: string): Promise<Access | null>;
   now(): number;
@@ -42,18 +42,18 @@ export async function issueToken(body: unknown, userId: string, deps: TokenDeps)
   const parsed = parseTokenRequest(body);
   if ("status" in parsed) return parsed;
   const roomId = parsed.roomId;
-  if (!deps.livekit || !deps.identitySecret) return unavailable;
+  if (!deps.relay || !deps.identitySecret) return unavailable;
   const room = roomId.toLowerCase();
   const access = await deps.access(room, userId);
   if (!access) return unavailable;
   if (access.state !== "ok") return { status: REFUSALS[access.state] ?? 403, body: { error: access.state } };
   const canPublish = access.can_publish === true;
   const identity = await participantIdentity(deps.identitySecret, userId, room);
-  const token = await mintToken(deps.livekit, identity, listenerGrant(room, canPublish), deps.now());
+  const token = await mintToken(deps.relay, identity, room, canPublish, deps.now());
   const identities: Record<string, string> = {};
   for (const member of access.member_ids ?? []) identities[await participantIdentity(deps.identitySecret, member.toLowerCase(), room)] = member;
   return {
     status: 200,
-    body: { token, url: deps.livekit.url, can_publish: canPublish, expires_in: TOKEN_TTL_SECONDS, voice_off_crews: access.voice_off_crews ?? [], identities },
+    body: { token, url: deps.relay.url, can_publish: canPublish, expires_in: TOKEN_TTL_SECONDS, voice_off_crews: access.voice_off_crews ?? [], identities },
   };
 }

@@ -11,24 +11,13 @@ async function hmac(secret: string, data: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(data)));
 }
 
-// The audio service's participant id: stable inside one room, unlinkable across rooms, and not reversible to the account.
+// The participant id on the voice relay: stable inside one room, unlinkable across rooms, and not reversible to the account.
 export async function participantIdentity(secret: string, userId: string, roomId: string): Promise<string> {
   const digest = await hmac(secret, `walkie:v1:${roomId}:${userId}`);
   return Array.from(digest.slice(0, 16), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export const TOKEN_TTL_SECONDS = 300;
-
-export interface VideoGrant {
-  room: string;
-  roomJoin?: boolean;
-  roomAdmin?: boolean;
-  canSubscribe?: boolean;
-  canPublish?: boolean;
-  canPublishData?: boolean;
-  canPublishSources?: string[];
-  canUpdateOwnMetadata?: boolean;
-}
 
 export async function signJwt(secret: string, claims: Record<string, unknown>): Promise<string> {
   const head = b64url(encoder.encode(JSON.stringify({ alg: "HS256", typ: "JWT" })));
@@ -37,33 +26,15 @@ export async function signJwt(secret: string, claims: Record<string, unknown>): 
   return `${head}.${body}.${b64url(sig)}`;
 }
 
-export function listenerGrant(room: string, canPublish: boolean): VideoGrant {
-  return {
-    room,
-    roomJoin: true,
-    canSubscribe: true,
-    canPublish,
-    canPublishData: false,
-    canPublishSources: canPublish ? ["microphone"] : [],
-    canUpdateOwnMetadata: false,
-  };
-}
-
-export interface LiveKitConfig {
+export interface RelayConfig {
   url: string;
-  apiKey: string;
-  apiSecret: string;
+  secret: string;
+  adminSecret: string;
 }
 
-export function mintToken(cfg: LiveKitConfig, identity: string, grant: VideoGrant, nowSeconds: number, ttl = TOKEN_TTL_SECONDS): Promise<string> {
-  return signJwt(cfg.apiSecret, {
-    iss: cfg.apiKey,
-    sub: identity,
-    name: "",
-    nbf: nowSeconds - 5,
-    exp: nowSeconds + ttl,
-    video: grant,
-  });
+// The relay verifies this HS256 token itself (relay/src/jwt.ts): the room, who may talk, and an opaque participant id.
+export function mintToken(cfg: Pick<RelayConfig, "secret">, identity: string, room: string, canPublish: boolean, nowSeconds: number, ttl = TOKEN_TTL_SECONDS): Promise<string> {
+  return signJwt(cfg.secret, { iss: "rendezview", sub: identity, room, pub: canPublish, nbf: nowSeconds - 5, exp: nowSeconds + ttl });
 }
 
 export interface VoiceAdmin {
@@ -73,22 +44,20 @@ export interface VoiceAdmin {
 
 const httpBase = (url: string) => url.replace(/^wss:/, "https:").replace(/^ws:/, "http:").replace(/\/+$/, "");
 
-// LiveKit's server API is Twirp over HTTP. A room or participant that is already gone answers not_found, which counts as done.
-export function liveKitAdmin(cfg: LiveKitConfig, doFetch: typeof fetch = fetch): VoiceAdmin {
-  const call = async (method: string, room: string, body: Record<string, string>) => {
-    const jwt = await mintToken(cfg, "walkie-server", { room, roomAdmin: true }, Math.floor(Date.now() / 1000), 60);
-    const res = await doFetch(`${httpBase(cfg.url)}/twirp/livekit.RoomService/${method}`, {
+// The relay closes the matching sockets; a room or participant that is not connected closes nothing, which counts as done.
+export function relayAdmin(cfg: RelayConfig, doFetch: typeof fetch = fetch): VoiceAdmin {
+  const call = async (body: Record<string, string>) => {
+    const res = await doFetch(`${httpBase(cfg.url)}/admin/kick`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}`, "User-Agent": "Rendezview-walkie-server" },
+      headers: { "Content-Type": "application/json", "x-relay-secret": cfg.adminSecret, "User-Agent": "Rendezview-walkie-server" },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     });
-    if (res.ok || res.status === 404) return;
-    throw new Error(`livekit ${method} ${res.status}`);
+    if (!res.ok) throw new Error(`relay kick ${res.status}`);
   };
   return {
-    removeParticipant: (room, identity) => call("RemoveParticipant", room, { room, identity }),
-    deleteRoom: (room) => call("DeleteRoom", room, { room }),
+    removeParticipant: (room, identity) => call({ room, identity }),
+    deleteRoom: (room) => call({ room }),
   };
 }
 

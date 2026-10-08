@@ -16,7 +16,7 @@ The code is complete for 0.0.1. These are the accounts, keys, and one-time steps
 | Apple Developer Program | iPhone builds, TestFlight, App Store | Paid, yearly |
 | Expo (EAS) | Cloud builds. **Needed because Expo SDK 57 requires Xcode 26.4+ and this Mac has 16.4** | Free tier |
 | Cloudflare | Hosts the link pages (Pages) and holds backups (R2) | Free tier |
-| LiveKit Cloud | Walkie-talkie voice in chat rooms (decision 0027). Not needed until the `walkie` module is used | Free tier |
+| Your own server | Runs the voice relay (`relay/`) behind a tunnel for walkie-talkie voice in chat rooms. Not needed until the `walkie` module is used | Existing hardware |
 | Google Play Console | Android release (later) | One-time fee |
 | A domain | Invite and reset links. A `pages.dev` address works to start but a domain is better for universal links | About $10/year |
 | An email sender (SMTP) | Confirmation and password reset emails in production. Resend, Brevo, or similar | Free tier |
@@ -37,25 +37,25 @@ The code is complete for 0.0.1. These are the accounts, keys, and one-time steps
 7. Create the read-only backup role: run `ops/scripts/backup-role.sql` once, with a real password.
 8. Copy these three values (Project Settings, API Keys): project URL, publishable key (public), secret key (**private, full access**).
 
-### Walkie-talkie voice (LiveKit)
+### Walkie-talkie voice (voice relay)
 
-1. Create a LiveKit Cloud project. In its settings keep recording and egress off. Copy the project URL (`wss://...`), an API key and its secret.
-2. Generate two long random values: `openssl rand -hex 32` for the participant-id key and again for the kick secret.
+1. Run the relay (`relay/`, a small Node service, no database) where you host services, for example as a Docker container: `docker build -t voice-relay relay`. Give it `WALKIE_RELAY_SECRET` and `WALKIE_RELAY_ADMIN_SECRET` (at least 32 characters each) and expose port 8080 over HTTPS, for example through a Cloudflare Tunnel route, so audio travels over a WebSocket and needs no UDP or open ports. `GET /healthz` answers ok. `GET /admin/stats` with header `x-relay-secret` returns counters only (rooms, connections, frames and bytes relayed).
+2. Generate long random values with `openssl rand -hex 32` for each of: the relay secret, the relay admin secret, the participant-id key and the kick secret.
 3. Function secrets (never committed; the local copy lives in the git-ignored `supabase/functions/.env`, template in `supabase/functions/.env.example`):
    ```
-   supabase secrets set LIVEKIT_URL=wss://<project>.livekit.cloud LIVEKIT_API_KEY=<key> LIVEKIT_API_SECRET=<secret> \
-     WALKIE_IDENTITY_SECRET=<random one> WALKIE_KICK_SECRET=<random two>
+   supabase secrets set WALKIE_RELAY_URL=wss://<relay host> WALKIE_RELAY_SECRET=<relay secret> WALKIE_RELAY_ADMIN_SECRET=<relay admin secret> \
+     WALKIE_IDENTITY_SECRET=<participant-id key> WALKIE_KICK_SECRET=<kick secret>
    supabase functions deploy walkie_token walkie_kick
    ```
-   `walkie_kick` is deployed without JWT verification (`supabase/config.toml`); it accepts only calls carrying `WALKIE_KICK_SECRET`.
+   `walkie_token` signs a 5 minute token with the relay secret; `walkie_kick` calls the relay's `/admin/kick` with the admin secret. `walkie_kick` is deployed without JWT verification (`supabase/config.toml`); it accepts only calls carrying `WALKIE_KICK_SECRET`.
 4. Tell the database where the kick function is and the same secret, in the SQL editor (the values live in `private.settings`, which only the service role and the database can read):
    ```
    update private.settings set value = 'https://<project ref>.supabase.co/functions/v1/walkie_kick' where key = 'walkie_kick_url';
    update private.settings set value = '<random two>' where key = 'walkie_kick_secret';
    ```
    Until both are set, removals are queued but not sent, and a removed person's access ends when their 5-minute token does. The database sends the call with `pg_net` after the change commits and a one-minute job sends each call again while the person is still not allowed (so a rejoin with an old token is kicked again); `private.walkie_kicks` is that queue, and a row is dropped after 6 minutes or as soon as the person is allowed back.
-5. Local development: `supabase/seed.sql` sets the local URL and a fake secret on `supabase db reset`. The local `.env` has fake LiveKit values, so token minting works and the kick call reaches `walkie_kick` but cannot reach LiveKit.
-6. The app needs a new development build (new native modules, microphone and background audio entitlements). Expo Go and old development builds will not work.
+5. Local development: `supabase/seed.sql` sets the local URL and a fake secret on `supabase db reset`. The local `.env` has fake relay values, so token minting works and the kick call reaches `walkie_kick` but cannot reach a relay. To run a relay locally: `WALKIE_RELAY_SECRET=<the .env value> WALKIE_RELAY_ADMIN_SECRET=<the .env value> pnpm --filter @rdv/voice-relay build && node relay/dist/main.js`.
+6. The app needs a new development build (new native audio module, microphone and background audio entitlements). Expo Go and old development builds will not work.
 
 ## 3. The mobile app
 

@@ -1,17 +1,19 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { admin, API_URL, ANON_KEY, call, callOk, createCrew, createUser, invokeAs, sleep, sql, type TestUser } from "./helpers";
-import { listenerGrant, liveKitAdmin, mintToken, participantIdentity, TOKEN_TTL_SECONDS } from "../supabase/functions/_shared/walkie";
+import { mintToken, participantIdentity, relayAdmin, TOKEN_TTL_SECONDS } from "../supabase/functions/_shared/walkie";
 import { issueToken, type Access } from "../supabase/functions/walkie_token/handler";
 import { kick } from "../supabase/functions/walkie_kick/handler";
 
 const IDENTITY_SECRET = "local-fake-identity-secret-0123456789abcdef0123456789abcdef";
 const KICK_SECRET = "local-fake-kick-secret-0123456789abcdef";
-const LIVEKIT_SECRET = "local_fake_livekit_secret_0123456789abcdef";
+const RELAY_SECRET = "local-fake-relay-secret-0123456789abcdef0123456789abcdef";
+const RELAY_ADMIN_SECRET = "local-fake-relay-admin-secret-0123456789abcdef0123456789";
 const ROOM_A = "11111111-1111-4111-8111-111111111111";
 const ROOM_B = "22222222-2222-4222-8222-222222222222";
 const USER = "33333333-3333-4333-8333-333333333333";
 
-interface Claims { iss: string; sub: string; name: string; nbf: number; exp: number; video: Record<string, unknown> }
+interface Claims { iss: string; sub: string; room: string; pub: boolean; nbf: number; exp: number }
 function decode(token: string): Claims {
   return JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString("utf8"));
 }
@@ -27,38 +29,39 @@ describe("walkie pure logic", () => {
     expect(a).not.toContain(USER.slice(0, 8));
   });
 
-  it("signs a five minute room token with an empty name and the right grants", async () => {
-    const cfg = { url: "wss://x.example", apiKey: "key", apiSecret: LIVEKIT_SECRET };
-    const listen = decode(await mintToken(cfg, "id1", listenerGrant(ROOM_A, false), 1000));
-    expect(listen).toMatchObject({ iss: "key", sub: "id1", name: "" });
+  it("signs a five minute relay token carrying only the room, the opaque id and whether the holder may talk", async () => {
+    const cfg = { secret: RELAY_SECRET };
+    const listen = decode(await mintToken(cfg, "id1", ROOM_A, false, 1000));
+    expect(listen).toEqual({ iss: "rendezview", sub: "id1", room: ROOM_A, pub: false, nbf: 995, exp: 1300 });
     expect(listen.exp - 1000).toBe(TOKEN_TTL_SECONDS);
-    expect(listen.video).toMatchObject({ room: ROOM_A, roomJoin: true, canSubscribe: true, canPublish: false, canPublishData: false, canPublishSources: [] });
-    const talk = decode(await mintToken(cfg, "id1", listenerGrant(ROOM_A, true), 1000));
-    expect(talk.video).toMatchObject({ canPublish: true, canPublishSources: ["microphone"] });
+    expect(decode(await mintToken(cfg, "id1", ROOM_A, true, 1000)).pub).toBe(true);
+    const token = await mintToken(cfg, "id1", ROOM_A, true, 1000);
+    const [head, body, sig] = token.split(".");
+    expect(sig).toBe(createHmac("sha256", RELAY_SECRET).update(`${head}.${body}`).digest("base64url"));
+    expect(JSON.parse(Buffer.from(head!, "base64url").toString())).toEqual({ alg: "HS256", typ: "JWT" });
   });
 
-  it("calls the server API with an admin token and treats an absent target as removed", async () => {
-    const seen: { url: string; auth: string; agent: string; body: unknown }[] = [];
+  it("asks the relay to close sockets with the admin secret and a User-Agent, and fails on a refusal", async () => {
+    const seen: { url: string; headers: Record<string, string>; body: unknown }[] = [];
     const fake = (async (url: string, init: RequestInit) => {
-      const headers = init.headers as Record<string, string>;
-      seen.push({ url, auth: headers.Authorization!, agent: headers["User-Agent"]!, body: JSON.parse(init.body as string) });
-      return new Response("{}", { status: seen.length === 2 ? 404 : 200 });
+      seen.push({ url, headers: init.headers as Record<string, string>, body: JSON.parse(init.body as string) });
+      return new Response("{}", { status: 200 });
     }) as unknown as typeof fetch;
-    const admin = liveKitAdmin({ url: "wss://x.example/", apiKey: "key", apiSecret: LIVEKIT_SECRET }, fake);
+    const cfg = { url: "wss://x.example/", secret: RELAY_SECRET, adminSecret: RELAY_ADMIN_SECRET };
+    const admin = relayAdmin(cfg, fake);
     await admin.removeParticipant(ROOM_A, "id1");
     await admin.deleteRoom(ROOM_A);
-    expect(seen[0]!.url).toBe("https://x.example/twirp/livekit.RoomService/RemoveParticipant");
-    expect(seen[0]!.agent).toBe("Rendezview-walkie-server");
+    expect(seen[0]!.url).toBe("https://x.example/admin/kick");
+    expect(seen[0]!.headers["x-relay-secret"]).toBe(RELAY_ADMIN_SECRET);
+    expect(seen[0]!.headers["User-Agent"]).toBe("Rendezview-walkie-server");
     expect(seen[0]!.body).toEqual({ room: ROOM_A, identity: "id1" });
-    expect(seen[1]!.url).toBe("https://x.example/twirp/livekit.RoomService/DeleteRoom");
-    const admin401 = liveKitAdmin({ url: "wss://x.example", apiKey: "key", apiSecret: LIVEKIT_SECRET }, (async () => new Response("no", { status: 401 })) as unknown as typeof fetch);
-    await expect(admin401.deleteRoom(ROOM_A)).rejects.toThrow();
-    const claims = decode(seen[0]!.auth.replace("Bearer ", ""));
-    expect(claims.video).toMatchObject({ roomAdmin: true, room: ROOM_A });
+    expect(seen[1]!.body).toEqual({ room: ROOM_A });
+    const refused = relayAdmin(cfg, (async () => new Response("no", { status: 401 })) as unknown as typeof fetch);
+    await expect(refused.deleteRoom(ROOM_A)).rejects.toThrow();
   });
 
-  const cfg = { url: "wss://x.example", apiKey: "key", apiSecret: LIVEKIT_SECRET };
-  const deps = (access: Access | null) => ({ livekit: cfg, identitySecret: IDENTITY_SECRET, access: async () => access, now: () => 2000 });
+  const cfg = { url: "wss://x.example", secret: RELAY_SECRET, adminSecret: RELAY_ADMIN_SECRET };
+  const deps = (access: Access | null) => ({ relay: cfg, identitySecret: IDENTITY_SECRET, access: async () => access, now: () => 2000 });
 
   it("maps access states to refusals and never mints for them", async () => {
     for (const [state, status] of [["room_not_found", 404], ["not_room_member", 403], ["room_closed", 409], ["suspended", 403]] as const) {
@@ -67,7 +70,7 @@ describe("walkie pure logic", () => {
     expect((await issueToken({ room_id: "nope" }, USER, deps({ state: "ok" }))).status).toBe(400);
     expect((await issueToken(null, USER, deps({ state: "ok" }))).status).toBe(400);
     expect((await issueToken({ room_id: ROOM_A }, USER, deps(null))).body).toEqual({ error: "walkie_unavailable" });
-    expect((await issueToken({ room_id: ROOM_A }, USER, { ...deps({ state: "ok" }), livekit: null })).status).toBe(503);
+    expect((await issueToken({ room_id: ROOM_A }, USER, { ...deps({ state: "ok" }), relay: null })).status).toBe(503);
   });
 
   it("returns the url and grants with the token", async () => {
@@ -75,7 +78,7 @@ describe("walkie pure logic", () => {
     const body = out.body as { token: string; url: string; can_publish: boolean; voice_off_crews: string[] };
     expect(out.status).toBe(200);
     expect(body).toMatchObject({ url: "wss://x.example", can_publish: false, voice_off_crews: ["Night Run"] });
-    expect(decode(body.token).video).toMatchObject({ canPublish: false });
+    expect(decode(body.token)).toMatchObject({ pub: false, room: ROOM_A });
   });
 
   it("kick checks the shared secret, validates ids, and removes by the hashed id", async () => {
@@ -136,11 +139,11 @@ describe("walkie_token", () => {
     const res = await token(member, room);
     expect(res.status).toBe(200);
     const body = res.body as { token: string; url: string; can_publish: boolean };
-    expect(body).toMatchObject({ can_publish: true, url: "ws://127.0.0.1:7880" });
+    expect(body).toMatchObject({ can_publish: true, url: "ws://127.0.0.1:8080" });
     const claims = decode(body.token);
     expect(claims.exp - claims.nbf).toBeLessThanOrEqual(TOKEN_TTL_SECONDS + 5);
-    expect(claims.video).toMatchObject({ room, canSubscribe: true, canPublish: true });
-    expect(claims.name).toBe("");
+    expect(claims).toMatchObject({ room, pub: true });
+    expect(Object.keys(claims).sort()).toEqual(["exp", "iss", "nbf", "pub", "room", "sub"]);
     const raw = Buffer.from(body.token.split(".")[1]!, "base64url").toString("utf8");
     for (const secret of [member.id, member.handle, member.email, crew.id]) expect(raw).not.toContain(secret);
     expect(claims.sub).toBe(await participantIdentity(IDENTITY_SECRET, member.id, room));
@@ -228,7 +231,7 @@ describe("walkie_token", () => {
     const body = res.body as { token: string; can_publish: boolean; voice_off_crews: string[] };
     expect(body.can_publish).toBe(false);
     expect(body.voice_off_crews).toHaveLength(1);
-    expect(decode(body.token).video).toMatchObject({ canSubscribe: true, canPublish: false });
+    expect(decode(body.token).pub).toBe(false);
     await setVoice(owner, crew.id, member.id, true);
     expect(((await token(member, room)).body as { can_publish: boolean }).can_publish).toBe(true);
   });
