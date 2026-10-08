@@ -23,6 +23,8 @@ export interface Voice {
   onStatus(fn: (status: VoiceStatus) => void): Unsubscribe;
   // Participant ids of whoever the service currently hears speaking.
   onSpeakers(fn: (identities: string[]) => void): Unsubscribe;
+  // Participant ids of everyone else in the room, whenever that changes.
+  onParticipants(fn: (identities: string[]) => void): Unsubscribe;
   // Audio level 0 to 1 per participant id, while connected.
   onLevels(fn: (levels: Record<string, number>) => void): Unsubscribe;
 }
