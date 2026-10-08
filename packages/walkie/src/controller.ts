@@ -78,6 +78,8 @@ export const REFRESH_MARGIN_MS = 60_000;
 export const RETRY_MS = [1_000, 3_000, 8_000, 15_000, 30_000];
 export const BUSY_MS = [5_000, 10_000, 20_000, 40_000, 60_000];
 export const ROSTER_MIN_GAP_MS = 15_000;
+export const WATCHDOG_MS = 30_000;
+export const CLOSE_MS = 8_000;
 
 const initial: WalkieState = {
   roomId: null, roomName: "", phase: "idle", canPublish: false, voiceOffCrews: [], talking: false, limitReached: false,
@@ -105,6 +107,13 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
   let refreshFailures = 0;
   let refreshHandle: unknown = null;
   let retryHandle: unknown = null;
+  let watchdogHandle: unknown = null;
+  const boundedHandles = new Map<unknown, () => void>();
+  let disposed = false;
+  let flight = 0;
+  let connectedAt = 0;
+  let lateStatus: VoiceStatus | null = null;
+  let indicatorPending = false;
   let pendingDisconnect: Promise<void> = Promise.resolve();
   let ignoreDisconnect = false;
   let held = false;
@@ -154,9 +163,19 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
   voice.onStatus((status: VoiceStatus) => {
     const s = state.get();
     if (!s.roomId || ignoreDisconnect) return;
-    if (status === "connected" && s.phase === "reconnecting") patch({ phase: "listening" });
-    else if (status === "reconnecting" && s.phase === "listening") patch({ phase: "reconnecting" });
-    else if (status === "disconnected" && (s.phase === "listening" || s.phase === "reconnecting")) void recover();
+    if (flight === epoch) {
+      if (connectedAt === epoch) lateStatus = status;
+      return;
+    }
+    if (status === "connected" && s.phase === "reconnecting") {
+      disarmWatchdog();
+      patch({ phase: "listening" });
+    } else if (status === "reconnecting" && s.phase === "listening") {
+      patch({ phase: "reconnecting" });
+      armWatchdog(s.roomId, epoch);
+    } else if (status === "disconnected" && (s.phase === "listening" || s.phase === "reconnecting")) {
+      void recover();
+    }
   });
 
   const applyRoster = (t: TokenResponse) => {
@@ -166,8 +185,43 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
   };
 
   const clearTimers = () => {
-    for (const h of [refreshHandle, retryHandle, rosterHandle]) if (h !== null) timers.clear(h);
-    refreshHandle = retryHandle = rosterHandle = null;
+    for (const h of [refreshHandle, retryHandle, rosterHandle, watchdogHandle]) if (h !== null) timers.clear(h);
+    refreshHandle = retryHandle = rosterHandle = watchdogHandle = null;
+    for (const [h, release] of [...boundedHandles]) {
+      timers.clear(h);
+      release();
+    }
+    boundedHandles.clear();
+  };
+
+  // A call into a dead room can hang forever; nothing in the controller may wait on one longer than this.
+  const bounded = (p: Promise<unknown>) =>
+    new Promise<void>((resolve) => {
+      p.catch(() => undefined);
+      if (disposed) return resolve();
+      let h: unknown = null;
+      const done = () => {
+        if (h !== null) timers.clear(h);
+        boundedHandles.delete(h);
+        resolve();
+      };
+      h = timers.set(done, CLOSE_MS);
+      boundedHandles.set(h, done);
+      p.then(done, done);
+    });
+
+  const disarmWatchdog = () => {
+    if (watchdogHandle !== null) timers.clear(watchdogHandle);
+    watchdogHandle = null;
+  };
+  // Joining or reconnecting that has not connected in time is abandoned and started again with a fresh token.
+  const armWatchdog = (roomId: string, my: number) => {
+    disarmWatchdog();
+    watchdogHandle = timers.set(() => {
+      watchdogHandle = null;
+      if (my !== epoch || state.get().roomId !== roomId) return;
+      void recover();
+    }, WATCHDOG_MS);
   };
 
   const disconnectVoice = () => {
@@ -175,7 +229,7 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
       .then(async () => {
         ignoreDisconnect = true;
         try {
-          await voice.disconnect();
+          await bounded(voice.disconnect());
         } finally {
           ignoreDisconnect = false;
         }
@@ -188,12 +242,14 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
     timer.stop();
     if (!state.get().talking) return;
     patch({ talking: false });
-    await voice.setMicOpen(false).catch(() => undefined);
+    await bounded(voice.setMicOpen(false));
   };
 
   function teardown(phase: Phase, error: string | null = null) {
     const wasIn = state.get().roomId !== null;
     epoch++;
+    indicatorPending = false;
+    flight = 0;
     clearTimers();
     void closeMic();
     roster = {};
@@ -222,12 +278,15 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
 
   const sleep = (ms: number) => new Promise<void>((resolve) => { retryHandle = timers.set(() => { retryHandle = null; resolve(); }, ms); });
 
-  async function join(roomId: string, my: number, first: boolean, preset?: TokenResponse) {
+  async function join(roomId: string, my: number, preset?: TokenResponse) {
+    flight = my;
+    lateStatus = null;
     let given = preset;
     let attempt = 0;
     let busy = 0;
     for (;;) {
       if (my !== epoch) return;
+      armWatchdog(roomId, my);
       try {
         const t = given ?? (await fetchToken(roomId));
         given = undefined;
@@ -236,15 +295,30 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
         if (my !== epoch) return;
         await voice.connect({ url: t.url, token: t.token });
         if (my !== epoch) return;
+        connectedAt = my;
+        lateStatus = null;
         voice.setSoundMuted(state.get().soundMuted);
         applyRoster(t);
+        disarmWatchdog();
         refreshFailures = 0;
         patch({ phase: "listening", canPublish: t.can_publish, voiceOffCrews: t.voice_off_crews ?? [], error: null });
         scheduleRefresh(roomId, my, t.expires_in * 1000 - REFRESH_MARGIN_MS);
-        if (first) void indicator.show(state.get().roomName).catch(() => undefined);
+        if (indicatorPending) {
+          indicatorPending = false;
+          void indicator.show(state.get().roomName).catch(() => undefined);
+        }
+        flight = 0;
+        const late = lateStatus;
+        lateStatus = null;
+        if (late === "disconnected") void recover();
+        else if (late === "reconnecting") {
+          patch({ phase: "reconnecting" });
+          armWatchdog(roomId, my);
+        }
         return;
       } catch (e) {
         if (my !== epoch) return;
+        disarmWatchdog();
         const code = codeOf(e);
         if (FATAL_CODES.has(code)) {
           teardown("removed", code);
@@ -309,18 +383,20 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
     const roomId = state.get().roomId;
     if (!roomId) return;
     const my = ++epoch;
+    flight = my;
     if (refreshHandle !== null) timers.clear(refreshHandle);
     await closeMic();
     patch({ phase: "reconnecting" });
     disconnectVoice();
-    await join(roomId, my, false, fresh);
+    await join(roomId, my, fresh);
   }
 
   function begin(roomId: string, name: string) {
     teardown("idle");
     const my = epoch;
     state.set((s) => ({ ...s, roomId, roomName: name, phase: "joining" }));
-    void join(roomId, my, true);
+    indicatorPending = true;
+    void join(roomId, my);
   }
 
   function reconcile() {
@@ -409,6 +485,7 @@ export function createWalkie(deps: WalkieDeps): WalkieController {
     rosterChanged,
     dispose() {
       holders.length = 0;
+      disposed = true;
       teardown("idle");
     },
   };

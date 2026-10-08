@@ -1,4 +1,7 @@
-import { PermissionsAndroid, Platform } from "react-native";
+import { LogBox, PermissionsAndroid, Platform } from "react-native";
+import { EXPECTED_LIVEKIT_LOGS, installExpectedLogFilter } from "./quiet";
+
+declare const __DEV__: boolean | undefined;
 import type { Unsubscribe } from "@rdv/core/events";
 import type { Voice, VoiceJoin, VoiceStatus } from "@rdv/core/voice";
 
@@ -24,8 +27,17 @@ export function createLiveKitVoice(modules?: LiveKitModules): Voice {
   const participants = new Set<(i: string[]) => void>();
   const levels = new Set<(l: Record<string, number>) => void>();
 
+  let quieted = false;
+  const quiet = () => {
+    if (quieted) return;
+    quieted = true;
+    if (typeof __DEV__ === "undefined" || !__DEV__) return;
+    installExpectedLogFilter(console);
+    LogBox?.ignoreLogs?.(EXPECTED_LIVEKIT_LOGS);
+  };
   const load = () => {
     if (rn) return;
+    quiet();
     rn = require("@livekit/react-native");
     rn.registerGlobals();
     lk = require("livekit-client");
@@ -59,6 +71,7 @@ export function createLiveKitVoice(modules?: LiveKitModules): Voice {
 
   return {
     async connect({ url, token }: VoiceJoin) {
+      quiet();
       load();
       const my = ++epoch;
       attempts++;
@@ -88,8 +101,12 @@ export function createLiveKitVoice(modules?: LiveKitModules): Voice {
         next = created;
         room = created;
         created
-          .on(lk.RoomEvent.Reconnecting, () => emit("reconnecting"))
-          .on(lk.RoomEvent.Reconnected, () => emit("connected"))
+          .on(lk.RoomEvent.Reconnecting, () => {
+            if (room === created) emit("reconnecting");
+          })
+          .on(lk.RoomEvent.Reconnected, () => {
+            if (room === created) emit("connected");
+          })
           .on(lk.RoomEvent.Disconnected, () => {
             if (room === created) emit("disconnected");
           })
@@ -120,13 +137,13 @@ export function createLiveKitVoice(modules?: LiveKitModules): Voice {
       }
     },
     async disconnect() {
-      epoch++;
+      const my = ++epoch;
       stopPolling();
       const current = room;
       room = null;
       if (!current) return;
       await current.disconnect().catch(() => undefined);
-      await rn?.AudioSession.stopAudioSession().catch(() => undefined);
+      if (my === epoch && !room) await rn?.AudioSession.stopAudioSession().catch(() => undefined);
     },
     // Opening publishes the microphone; closing unpublishes it, so nothing stays published between presses.
     async setMicOpen(open: boolean) {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { statusLine } from "./lines";
 import { AppError } from "@rdv/core/errors";
 import type { Voice, VoiceStatus } from "@rdv/core/voice";
-import { BUSY_MS, createWalkie, RETRY_MS, type WalkieController, type WalkieDeps } from "./controller";
+import { BUSY_MS, CLOSE_MS, createWalkie, RETRY_MS, WATCHDOG_MS, type WalkieController, type WalkieDeps } from "./controller";
 
 class FakeVoice implements Voice {
   calls: string[] = [];
@@ -14,8 +14,19 @@ class FakeVoice implements Voice {
   speakerFns = new Set<(i: string[]) => void>();
   participantFns = new Set<(i: string[]) => void>();
   levelFns = new Set<(l: Record<string, number>) => void>();
-  async connect(join: { url: string; token: string }) { this.calls.push(`connect:${join.token}`); }
-  async disconnect() { this.calls.push("disconnect"); }
+  hangConnects = 0;
+  hangDisconnect = false;
+  async connect(join: { url: string; token: string }) {
+    this.calls.push(`connect:${join.token}`);
+    if (this.hangConnects > 0) {
+      this.hangConnects--;
+      await new Promise<void>(() => undefined);
+    }
+  }
+  async disconnect() {
+    this.calls.push("disconnect");
+    if (this.hangDisconnect) await new Promise<void>(() => undefined);
+  }
   async setMicOpen(open: boolean) {
     if (open && this.holdOpen) await this.holdOpen;
     this.mic = open;
@@ -421,5 +432,179 @@ describe("hearing others", () => {
     await settle();
     expect(h.voice.calls.at(-1)).toBe("muted:true");
     expect(h.walkie.state.get().soundMuted).toBe(true);
+  });
+});
+
+describe("stalled reconnects", () => {
+  const listening = async (replies: Reply[] = []) => {
+    const h = harness(replies);
+    const release = h.walkie.acquire("r1", "Room");
+    await settle();
+    expect(phase(h.walkie)).toBe("listening");
+    return { ...h, release };
+  };
+
+  it("rejoins listen-only at once when the service reports a disconnect after a kick", async () => {
+    const h = await listening([{}, { can_publish: false, voice_off_crews: ["c1"] }]);
+    h.voice.status("disconnected");
+    await settle();
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.walkie.state.get()).toMatchObject({ canPublish: false, voiceOffCrews: ["c1"] });
+    expect(h.voice.calls.filter((c) => c.startsWith("connect:"))).toEqual(["connect:t1", "connect:t2"]);
+  });
+
+  it("restarts with a fresh token when the service keeps reconnecting and never reports back", async () => {
+    const h = await listening([{}, { can_publish: false }]);
+    h.voice.status("reconnecting");
+    expect(phase(h.walkie)).toBe("reconnecting");
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS - 1);
+    expect(phase(h.walkie)).toBe("reconnecting");
+    expect(h.invocations).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.invocations).toHaveLength(2);
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.walkie.state.get().canPublish).toBe(false);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("does not restart when the service reconnects in time", async () => {
+    const h = await listening();
+    h.voice.status("reconnecting");
+    await vi.advanceTimersByTimeAsync(10_000);
+    h.voice.status("connected");
+    expect(phase(h.walkie)).toBe("listening");
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
+    expect(h.invocations).toHaveLength(1);
+  });
+
+  it("abandons a connect that never finishes and joins again, without stacking attempts", async () => {
+    const h = harness([{}, { can_publish: false }]);
+    h.voice.hangConnects = 1;
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    expect(phase(h.walkie)).toBe("joining");
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS);
+    expect(h.invocations).toHaveLength(2);
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.walkie.state.get().canPublish).toBe(false);
+    expect(h.voice.calls.filter((c) => c.startsWith("connect:"))).toHaveLength(2);
+    expect(h.indicator.shown).toEqual(["Room"]);
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 3);
+    expect(h.invocations).toHaveLength(2);
+  });
+
+  it("recovers after a kick whose connect and disconnect both hang", async () => {
+    const h = await listening([{}, { can_publish: false }, { can_publish: false }]);
+    h.voice.hangDisconnect = true;
+    h.voice.hangConnects = 1;
+    h.voice.status("disconnected");
+    await settle();
+    expect(phase(h.walkie)).toBe("reconnecting");
+    h.voice.hangDisconnect = false;
+    await vi.advanceTimersByTimeAsync(CLOSE_MS + WATCHDOG_MS + 1_000);
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.walkie.state.get().canPublish).toBe(false);
+  });
+
+  it("is not held up by a microphone close that never returns", async () => {
+    const h = await listening([{}, { can_publish: false }]);
+    await h.walkie.press();
+    expect(h.walkie.state.get().talking).toBe(true);
+    h.voice.setMicOpen = () => new Promise<void>(() => undefined);
+    h.voice.status("disconnected");
+    await vi.advanceTimersByTimeAsync(CLOSE_MS + 1_000);
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.walkie.state.get().talking).toBe(false);
+  });
+
+  it("keeps the busy backoff when recovery is rate limited, then listens", async () => {
+    const h = await listening([{}, new AppError("rate_limited"), { can_publish: false }]);
+    h.voice.status("disconnected");
+    await settle();
+    expect(h.walkie.state.get()).toMatchObject({ phase: "unavailable", error: "rate_limited" });
+    await vi.advanceTimersByTimeAsync(BUSY_MS[0]! - 1);
+    expect(h.invocations).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.walkie.state.get().canPublish).toBe(false);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("settles as removed when recovery finds the person is out, with no timers left", async () => {
+    const h = await listening([{}, new AppError("not_room_member")]);
+    h.voice.status("disconnected");
+    await settle();
+    expect(phase(h.walkie)).toBe("removed");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancels the watchdog on leave and on dispose", async () => {
+    const h = harness();
+    h.voice.hangConnects = 2;
+    const release = h.walkie.acquire("r1", "Room");
+    await settle();
+    release();
+    await settle();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
+    expect(h.invocations).toHaveLength(1);
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    h.walkie.dispose();
+    await settle();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(phase(h.walkie)).toBe("idle");
+  });
+
+  it("ignores a connected status while a join is still in progress and keeps the watchdog", async () => {
+    const h = await listening([{}, { can_publish: false }, { can_publish: false }]);
+    h.voice.hangConnects = 1;
+    h.voice.status("disconnected");
+    await settle();
+    expect(phase(h.walkie)).toBe("reconnecting");
+    h.voice.status("connected");
+    expect(phase(h.walkie)).toBe("reconnecting");
+    expect(h.walkie.state.get().canPublish).toBe(true);
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS);
+    expect(h.invocations).toHaveLength(3);
+    expect(phase(h.walkie)).toBe("listening");
+  });
+
+  it("does not let a late disconnect of a superseded room drop the new session", async () => {
+    const h = await listening([{}, { can_publish: false }]);
+    let finish!: () => void;
+    h.voice.disconnect = async () => {
+      h.voice.calls.push("disconnect");
+      await new Promise<void>((r) => (finish = r));
+    };
+    h.voice.status("disconnected");
+    await vi.advanceTimersByTimeAsync(CLOSE_MS + 1);
+    expect(phase(h.walkie)).toBe("listening");
+    const connects = h.voice.calls.filter((c) => c.startsWith("connect:")).length;
+    finish();
+    await settle();
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.invocations).toHaveLength(2);
+    expect(h.voice.calls.filter((c) => c.startsWith("connect:"))).toHaveLength(connects);
+  });
+
+  it("shows the indicator once even when the first join is restarted twice", async () => {
+    const h = harness([{}, {}, {}]);
+    h.voice.hangConnects = 2;
+    h.walkie.acquire("r1", "Room");
+    await settle();
+    await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
+    expect(phase(h.walkie)).toBe("listening");
+    expect(h.indicator.shown).toEqual(["Room"]);
+  });
+
+  it("leaves no timers after dispose even with a disconnect that hangs", async () => {
+    const h = await listening();
+    h.voice.hangDisconnect = true;
+    h.voice.status("disconnected");
+    await settle();
+    h.walkie.dispose();
+    await settle();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
