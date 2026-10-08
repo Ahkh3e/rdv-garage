@@ -62,7 +62,7 @@ Follow `ops/README.md`. You need: the server (Node 22.13+, pnpm), `/etc/rdv-ops/
 
 ## 6. Before real people use it
 
-- A lawyer reviews `DISCLAIMERS` in `packages/core/src/legal.ts` (also built into the link pages). Bump `TERMS_VERSION` when the text changes (also in `supabase/functions/register/index.ts`).
+- A lawyer reviews `DISCLAIMERS` in `packages/core/src/legal.ts` (also built into the link pages). Bump `TERMS_VERSION` when the text changes, and set the `terms_version` row in `private.settings` in the same change with a migration (the register function reads the setting). Signed-in people on an older version are asked to accept again.
 - Run `ops/scripts/restore-check.sh` once against a scratch database.
 - Confirm `AUTO_CONFIRM_EMAIL` is off and `ENVIRONMENT=production` on the production project.
 - Store submission notes are in the spec repo (`docs/store-submission.md`): privacy policy, terms, Apple privacy labels, Play data safety, background location justification, and a reviewer account.

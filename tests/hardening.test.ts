@@ -37,10 +37,10 @@ describe("review hardening", () => {
     const [invite] = await callOk<{ code: string }[]>(founder.client, "referral", "create_invite");
     const victim = `${uniq("victim")}@example.test`;
     for (let i = 0; i < 8; i++) {
-      const bad = await register({ invite_code: "ZZZZZZZZZZZZ", handle: uniq("g"), email: victim, password: "longenough1", terms_version: "v1", age_confirmed: true });
+      const bad = await register({ invite_code: "ZZZZZZZZZZZZ", handle: uniq("g"), email: victim, password: "longenough1", terms_version: "v2", age_confirmed: true });
       expect(bad.body.error).toBe("invalid_invite");
     }
-    const ok = await register({ invite_code: invite!.code, handle: uniq("v"), email: victim, password: "longenough1", terms_version: "v1", age_confirmed: true });
+    const ok = await register({ invite_code: invite!.code, handle: uniq("v"), email: victim, password: "longenough1", terms_version: "v2", age_confirmed: true });
     expect(ok.body.status).toBe("confirmed");
   });
 
@@ -50,7 +50,7 @@ describe("review hardening", () => {
     const email = `${uniq("rep")}@example.test`;
     const results: unknown[] = [];
     for (let i = 0; i < 7; i++) {
-      const r = await register({ invite_code: invite!.code, handle: uniq("r"), email, password: "longenough1", terms_version: "v1", age_confirmed: true });
+      const r = await register({ invite_code: invite!.code, handle: uniq("r"), email, password: "longenough1", terms_version: "v2", age_confirmed: true });
       results.push(r.body.error ?? r.body.status);
     }
     expect(results.slice(0, 5)).not.toContain("rate_limited");
@@ -60,13 +60,13 @@ describe("review hardening", () => {
   it("reads the terms version from settings instead of a hardcoded value", async () => {
     const founder = await createUser();
     const [invite] = await callOk<{ code: string }[]>(founder.client, "referral", "create_invite");
-    await sql("update private.settings set value = 'v2' where key = 'terms_version'");
+    await sql("update private.settings set value = 'v3' where key = 'terms_version'");
     try {
       const body = (h: string, v: string) => ({ invite_code: invite!.code, handle: h, email: `${h}@example.test`, password: "longenough1", terms_version: v, age_confirmed: true });
-      expect((await register(body(uniq("t"), "v1"))).body.error).toBe("terms_required");
-      expect((await register(body(uniq("t"), "v2"))).body.status).toBe("confirmed");
+      expect((await register(body(uniq("t"), "v2"))).body.error).toBe("terms_required");
+      expect((await register(body(uniq("t"), "v3"))).body.status).toBe("confirmed");
     } finally {
-      await sql("update private.settings set value = 'v1' where key = 'terms_version'");
+      await sql("update private.settings set value = 'v2' where key = 'terms_version'");
     }
   });
 

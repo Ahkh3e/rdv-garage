@@ -8,6 +8,8 @@ import { createStore } from "./store";
 import { createPinRegistry } from "./pins";
 import { createMapBridge } from "./mapBridge";
 import type { MapPin } from "./contracts";
+import { DISCLAIMER_FULL, DISCLAIMER_ROOM, TERMS_VERSION } from "./legal";
+import { CHAT_COMPOSER_ACTIONS_SLOT, CHAT_ROOM_ROUTE } from "./chat";
 import { formatDaySet, previousWeekStart, torontoWeekStart } from "./week";
 
 describe("torontoWeekStart", () => {
@@ -178,5 +180,23 @@ describe("map bridge", () => {
     expect(bridge.view.get()).toBeNull();
     bridge.setView({ lat: 1, lng: 2, zoom: 12 });
     expect(bridge.view.get()).toEqual({ lat: 1, lng: 2, zoom: 12 });
+  });
+});
+
+describe("terms and chat contracts", () => {
+  it("lists the chat and voice item before Use at your own risk and bumps the version", () => {
+    const titles = DISCLAIMER_FULL.map((d) => d.title);
+    expect(titles.indexOf("Chat and voice")).toBe(9);
+    expect(titles.at(-1)).toBe("Use at your own risk");
+    expect(TERMS_VERSION).toBe("v2");
+    expect(DISCLAIMER_FULL[1]!.body).toMatch(/hold a button to talk/);
+    expect(DISCLAIMER_ROOM).toMatch(/not recorded/);
+  });
+
+  it("names the chat route and the composer actions slot the walkie module relies on", () => {
+    expect(CHAT_ROOM_ROUTE).toBe("ChatRoom");
+    expect(CHAT_COMPOSER_ACTIONS_SLOT).toBe("chat.composer.actions");
+    expect(messageFor(new AppError("room_closed"))).toMatch(/closed/);
+    expect(messageFor(new AppError("no_shared_crew"))).toMatch(/share a crew/);
   });
 });

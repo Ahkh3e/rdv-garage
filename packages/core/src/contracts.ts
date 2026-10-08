@@ -10,6 +10,8 @@ export interface Profile {
   handle: string;
   avatarPath: string | null;
   carIcon: string;
+  // The terms version this person accepted. Absent when unknown; a different value asks them to accept again.
+  termsVersion?: string | null;
 }
 
 export type SessionState =
@@ -279,10 +281,13 @@ export interface Shell {
   addMenuItem(item: MenuItem): void;
   addLinkHandler(handler: LinkHandler): void;
   setAuthFlow(component: ComponentType): void;
+  // Shown instead of the app when the signed-in person has not accepted the current terms.
+  setTermsGate(component: ComponentType): void;
   navigate(route: string, params?: Record<string, unknown>): void;
 }
 
 export interface Module {
   id: string;
-  register(shell: Shell): void;
+  // May return a function that undoes what register started.
+  register(shell: Shell): void | (() => void);
 }

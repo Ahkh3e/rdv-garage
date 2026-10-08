@@ -19,6 +19,7 @@ import { createMapBridge } from "./mapBridge";
 import { parseLink } from "./links";
 import { createStore, useStore, type Store } from "./store";
 import { DEFAULT_CAR_ICON } from "./carIcons";
+import { TERMS_VERSION } from "./legal";
 import { colors, fonts } from "./theme";
 import { Spinner } from "./ui/Bits";
 import { Glass, GlassButton } from "./ui/Glass";
@@ -30,6 +31,7 @@ export interface ShellRuntime extends Shell {
   menu: MenuItem[];
   slots: Map<string, { component: ComponentType<any>; order: number }[]>;
   authFlow: ComponentType | null;
+  termsGate: ComponentType | null;
   navRef: ReturnType<typeof createNavigationContainerRef>;
   flushNavigation(): void;
   setStackReady(ready: boolean): void;
@@ -154,6 +156,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
     menu: [],
     slots: new Map(),
     authFlow: null,
+    termsGate: null,
     navRef,
     flushNavigation: () => flush(),
     setStackReady(ready) {
@@ -174,6 +177,9 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
     addLinkHandler: (handler) => void linkHandlers.push(handler),
     setAuthFlow(component) {
       shell.authFlow = component;
+    },
+    setTermsGate(component) {
+      shell.termsGate = component;
     },
     navigate(route, params) {
       pending.push({ route, params });
@@ -208,7 +214,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
 
   async function loadProfile(userId: string): Promise<void> {
     try {
-      const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; car_icon?: string; status: string }[]>("accounts", "my_profile");
+      const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; car_icon?: string; status: string; terms_version?: string | null }[]>("accounts", "my_profile");
       const row = rows[0];
       if (!row || row.status === "deleted") {
         await backend.auth.signOut();
@@ -217,7 +223,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
         await backend.auth.signOut();
         session.set({ status: "signedOut", notice: "suspended" });
       } else {
-        session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path, carIcon: row.car_icon ?? DEFAULT_CAR_ICON } });
+        session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path, carIcon: row.car_icon ?? DEFAULT_CAR_ICON, termsVersion: row.terms_version } });
       }
     } catch (error) {
       if (error instanceof AppError && (error.code === "network" || error.code === "unknown_error")) {
@@ -282,7 +288,7 @@ const navTheme = {
   colors: { ...DarkTheme.colors, background: colors.background, card: colors.background, border: colors.hairline, primary: colors.accent, text: colors.text },
 };
 
-const TAB_ICONS: Record<string, string> = { Map: "map", Crews: "users", Board: "award", Me: "user" };
+const TAB_ICONS: Record<string, string> = { Map: "map", Crews: "users", Rooms: "message-circle", Board: "award", Me: "user" };
 
 const Tabs = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -364,11 +370,14 @@ export function ShellApp({ shell }: { shell: ShellRuntime }) {
   const [ready, setReady] = useState(false);
   useEffect(() => shell.start(), [shell]);
   const AuthFlow = shell.authFlow;
+  const TermsGate = shell.termsGate;
+  const termsOutdated = state.status === "signedIn" && state.profile.termsVersion != null && state.profile.termsVersion !== TERMS_VERSION;
 
   let body;
   if (state.status === "loading") body = <Spinner />;
   else if (state.status === "offline") body = <Offline />;
   else if (state.status === "signedOut") body = AuthFlow ? <AuthFlow /> : <Spinner />;
+  else if (termsOutdated && TermsGate) body = <TermsGate />;
   else body = <SignedInStack />;
 
   return (

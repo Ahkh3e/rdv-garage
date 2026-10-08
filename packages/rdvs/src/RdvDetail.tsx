@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
-import { Banner, Button, Card, Empty, Screen, Text, colors, useAction, useCrewState, useDistanceLabel, useLiveState, useSession, useShell } from "@rdv/core";
+import { RDV_DETAIL_SLOT, Banner, Button, Card, Empty, Screen, Slot, Text, colors, useAction, useCrewState, useDistanceLabel, useLiveState, useSession, useShell } from "@rdv/core";
 import { EDIT_ROUTE, REFRESH_MS, type Person } from "./controller";
 import { useController } from "./context";
 import { formatWhen } from "./format";
@@ -139,6 +139,8 @@ export function RdvDetail({ navigation, route }: { navigation: any; route: { par
           );
         })}
       </Card>
+
+      <Slot name={RDV_DETAIL_SLOT} rdvId={rdv.id} isHost={rdv.hostId === me} ended={ended} cancelled={cancelled} />
 
       {canEdit(rdv, me, now) ? <Button testID="rdv-edit" title="Edit" variant="secondary" onPress={() => navigation.navigate(EDIT_ROUTE, { id: rdv.id })} /> : null}
       {canCancel(rdv, me, crews, now) ? <Button testID="rdv-cancel" title="Cancel RDV" variant="danger" onPress={confirmCancel} loading={cancel.loading} /> : null}

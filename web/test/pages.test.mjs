@@ -159,7 +159,7 @@ describe("static files", () => {
     const html = read("terms.html");
     expect(html).toMatch(/You are responsible for your driving/);
     expect(html).toMatch(/Use at your own risk/);
-    expect((html.match(/class="card"/g) ?? []).length).toBe(10);
+    expect((html.match(/class="card"/g) ?? []).length).toBe(11);
   });
   it("deep link files are valid JSON for the right app ids", () => {
     const aasa = JSON.parse(read(".well-known/apple-app-site-association"));
