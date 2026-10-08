@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { call, callOk, createCrew, createUser, invokeAs, sleep, sql, type TestUser } from "./helpers";
+import { call, callOk, createCrew, createUser, invokeAs, sleep, sql, uniq, type TestUser } from "./helpers";
 
 interface RoomRow {
   id: string;
@@ -139,13 +139,14 @@ describe("invite rooms", () => {
 
   it("validates name, description and that every member shares a crew with the creator", async () => {
     const { owner, member, stranger } = await setup();
+    const name = `room ${uniq()}`;
     expect((await chat(owner, "create_room", { p_name: "ab" })).error).toBe("room_name_invalid");
     expect((await chat(owner, "create_room", { p_name: "x".repeat(31) })).error).toBe("room_name_invalid");
-    expect((await chat(owner, "create_room", { p_name: "fine name", p_description: "x".repeat(141) })).error).toBe("room_description_invalid");
-    expect((await chat(owner, "create_room", { p_name: "fine name", p_member_ids: [stranger.id] })).error).toBe("no_shared_crew");
-    expect((await chat(owner, "create_room", { p_name: "fine name", p_member_ids: [member.id, stranger.id] })).error).toBe("no_shared_crew");
-    expect(await sql("select 1 from chat.rooms where name = 'fine name'")).toHaveLength(0);
-    const id = await chatOk<string>(owner, "create_room", { p_name: "fine name", p_member_ids: [member.id, owner.id, member.id] });
+    expect((await chat(owner, "create_room", { p_name: name, p_description: "x".repeat(141) })).error).toBe("room_description_invalid");
+    expect((await chat(owner, "create_room", { p_name: name, p_member_ids: [stranger.id] })).error).toBe("no_shared_crew");
+    expect((await chat(owner, "create_room", { p_name: name, p_member_ids: [member.id, stranger.id] })).error).toBe("no_shared_crew");
+    expect(await sql("select 1 from chat.rooms where name = $1", [name])).toHaveLength(0);
+    const id = await chatOk<string>(owner, "create_room", { p_name: name, p_member_ids: [member.id, owner.id, member.id] });
     expect(await memberIds(id)).toHaveLength(2);
     const row = (await rooms(owner)).find((r) => r.id === id)!;
     expect(row).toMatchObject({ kind: "invite", role: "owner", can_moderate: true });
@@ -312,7 +313,7 @@ describe("messages", () => {
     }
     const first = await chatOk<MessageRow[]>(member, "list_messages", { p_room: room, p_limit: 2 });
     expect(first.map((m) => m.body)).toEqual(["m4", "m3"]);
-    const all = await sql<{ created_at: string; body: string }>("select body, created_at from chat.messages where body = 'm3'");
+    const all = await sql<{ created_at: string; body: string }>("select body, created_at from chat.messages where body = 'm3' and room_id = $1", [room]);
     const next = await chatOk<MessageRow[]>(member, "list_messages", { p_room: room, p_before: all[0]!.created_at, p_limit: 2 });
     expect(next.map((m) => m.body)).toEqual(["m2", "m1"]);
   });

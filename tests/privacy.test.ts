@@ -64,6 +64,25 @@ describe("access policies", () => {
     expect((await call(victim.client, "leaderboard", "weekly_top_speed", { p_crew: crew.id })).error).toBe("suspended");
   });
 
+  it("keeps chat closed to anonymous callers and suspended users, and service-only functions out of reach", async () => {
+    const owner = await createUser();
+    const victim = await createUser();
+    const crew = await createCrew(owner);
+    await callOk(victim.client, "crews", "join_crew", { p_link_code: crew.link_code });
+    const room = (await selectAs(victim, "chat", "rooms")).rows[0]!.id;
+    await callOk(victim.client, "chat", "send_message", { p_room: room, p_body: "hi" });
+    const anonymous = createClient(API_URL, ANON_KEY, { auth: { persistSession: false } });
+    expect((await anonymous.schema("chat").from("messages").select("id")).error).not.toBeNull();
+    expect((await anonymous.schema("chat").rpc("list_rooms")).error).not.toBeNull();
+    for (const fn of ["close_finished_rdv_rooms", "expire_messages"]) {
+      expect((await call(victim.client, "chat", fn)).error).not.toBeNull();
+    }
+    await admin.schema("accounts").rpc("suspend_user", { p_user: victim.id });
+    expect((await selectAs(victim, "chat", "messages")).rows.length).toBe(0);
+    expect((await call(victim.client, "chat", "list_rooms")).error).toBe("suspended");
+    expect((await call(victim.client, "chat", "send_message", { p_room: room, p_body: "still?" })).error).toBe("suspended");
+  });
+
   it("does not expose the private schema or service-only functions", async () => {
     const u = await createUser();
     expect((await call(u.client, "private", "setting", { p_key: "terms_version" })).error).not.toBeNull();
