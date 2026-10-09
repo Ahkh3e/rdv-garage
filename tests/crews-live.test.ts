@@ -22,6 +22,54 @@ describe("crews", () => {
     expect(peek.data ?? []).toHaveLength(0);
   });
 
+  it("lets a person choose a car colour from the palette, null by default, visible to shared crews only", async () => {
+    const owner = await createUser();
+    const member = await createUser();
+    const other = await createUser();
+    const stranger = await createUser();
+    const crew = await createCrew(owner, "Neon");
+    await createCrew(other, "Elsewhere");
+    await callOk(member.client, "crews", "join_crew", { p_link_code: crew.link_code });
+    type View = { members: { handle: string; car_color: string | null }[] }[];
+    const colorOf = async (viewer: typeof owner, handle: string) =>
+      (await callOk<View>(viewer.client, "crews", "list_my_crews")).flatMap((c) => c.members).find((m) => m.handle === handle)?.car_color;
+
+    expect(await colorOf(owner, member.handle)).toBeNull();
+    const mine = await callOk<{ car_color: string | null }[]>(member.client, "accounts", "my_profile");
+    expect(mine[0]!.car_color).toBeNull();
+
+    expect((await call(member.client, "accounts", "update_profile", { p_car_color: "pink" })).error).toBeNull();
+    expect(await colorOf(owner, member.handle)).toBe("pink");
+    expect((await callOk<{ car_color: string | null }[]>(member.client, "accounts", "my_profile"))[0]!.car_color).toBe("pink");
+    expect((await call(member.client, "accounts", "update_profile", { p_car_color: "brown" })).error).toBe("color_invalid");
+    expect((await call(member.client, "accounts", "update_profile", { p_car_color: "#ff00ff" })).error).toBe("color_invalid");
+    expect(await colorOf(owner, member.handle)).toBe("pink");
+
+    expect((await call(member.client, "accounts", "update_profile", { p_car_icon: "kart" })).error).toBeNull();
+    expect(await colorOf(owner, member.handle)).toBe("pink");
+
+    const viaTable = await owner.client.schema("accounts").from("profiles").select("car_color").eq("handle", member.handle);
+    expect(viaTable.data).toEqual([{ car_color: "pink" }]);
+    for (const outsider of [stranger, other]) {
+      const peek = await outsider.client.schema("accounts").from("profiles").select("car_color").eq("handle", member.handle);
+      expect(peek.data ?? []).toHaveLength(0);
+      expect(await colorOf(outsider, member.handle)).toBeUndefined();
+    }
+
+    expect((await call(member.client, "accounts", "update_profile", { p_clear_car_color: true })).error).toBeNull();
+    expect(await colorOf(owner, member.handle)).toBeNull();
+    for (const key of ["blue", "cyan", "green", "lime", "yellow", "orange", "red", "pink", "purple", "white"]) {
+      expect((await call(member.client, "accounts", "update_profile", { p_car_color: key })).error).toBeNull();
+    }
+  });
+
+  it("refuses a colour outside the palette at the table too", async () => {
+    const user = await createUser();
+    await expect(sql("update accounts.profiles set car_color = 'teal' where handle = $1", [user.handle])).rejects.toThrow(/car_color/);
+    await sql("update accounts.profiles set car_color = 'cyan' where handle = $1", [user.handle]);
+    expect((await sql<{ car_color: string }>("select car_color from accounts.profiles where handle = $1", [user.handle]))[0]!.car_color).toBe("cyan");
+  });
+
   it("creates, joins by link, lists, and selects", async () => {
     const owner = await createUser();
     const member = await createUser();
