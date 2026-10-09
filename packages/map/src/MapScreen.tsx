@@ -397,7 +397,8 @@ export function MapScreen() {
   const cars: CarInput[] = [
     ...others.map((p) => {
       const info = lookup.get(p.userId)!;
-      return { id: p.userId, lng: p.lng, lat: p.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: memberColor(info), tint: crewStyle(info.styleIndex).tint, label: info.handle };
+      const at = headPosition(p.userId, p);
+      return { id: p.userId, lng: at.lng, lat: at.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: memberColor(info), tint: crewStyle(info.styleIndex).tint, label: info.handle };
     }),
     ...(me ? [{ id: "me", lng: headPosition("me", me).lng, lat: headPosition("me", me).lat, heading: headingFor("me", me.heading), icon: myIcon, color: myColor, self: true }] : []),
   ];
