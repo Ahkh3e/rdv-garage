@@ -43,7 +43,7 @@ describe("operator toolkit against a real stack", { timeout: 120000 }, () => {
     expect(readFileSync(credentials, "utf8").trim().split("\n").length).toBe(2);
 
     // A created user can really sign in with the stored password.
-    const backend = createBackend({ supabaseUrl: API_URL, supabaseKey: ANON_KEY, linkDomain: "x", flags: {} }, memoryStore());
+    const backend = createBackend({ supabaseUrl: API_URL, supabaseKey: ANON_KEY, linkDomain: "x", flags: {}, version: "0.0.0", build: "test" }, memoryStore());
     await backend.auth.signIn(created[0]!.email, created[0]!.password);
 
     const crew = (await crewCreate(c, { owner: created[0]!.handle, members: 2, name: "Ops Crew" }))!;
@@ -54,7 +54,7 @@ describe("operator toolkit against a real stack", { timeout: 120000 }, () => {
     await userSuspend(c, created[0]!.handle);
     await expect(backend.auth.signIn(created[0]!.email, created[0]!.password)).rejects.toMatchObject({ code: "suspended" });
     await userRestore(c, created[0]!.handle);
-    await createBackend({ supabaseUrl: API_URL, supabaseKey: ANON_KEY, linkDomain: "x", flags: {} }, memoryStore()).auth.signIn(created[0]!.email, created[0]!.password);
+    await createBackend({ supabaseUrl: API_URL, supabaseKey: ANON_KEY, linkDomain: "x", flags: {}, version: "0.0.0", build: "test" }, memoryStore()).auth.signIn(created[0]!.email, created[0]!.password);
 
     await userDelete(c, { handle: created[1]!.handle });
     const gone = await sql<{ status: string }>("select status from accounts.profiles where handle like 'deleted_%' and invited_by is null order by created_at desc limit 1");
@@ -67,7 +67,7 @@ describe("operator toolkit against a real stack", { timeout: 120000 }, () => {
   it("simulates live drivers that a real phone sees move, and fills the leaderboard", async () => {
     const c = ctx();
     const real = await createUser();
-    const rb = createBackend({ supabaseUrl: API_URL, supabaseKey: ANON_KEY, linkDomain: "x", flags: {} }, memoryStore());
+    const rb = createBackend({ supabaseUrl: API_URL, supabaseKey: ANON_KEY, linkDomain: "x", flags: {}, version: "0.0.0", build: "test" }, memoryStore());
     await rb.auth.signIn(real.email, real.password);
     const crew = await createCrew(real, "Sim Watch");
     const seen = new Map<string, number>();

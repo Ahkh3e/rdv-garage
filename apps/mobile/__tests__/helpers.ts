@@ -4,7 +4,7 @@ import { modules } from "../src/modules";
 
 type Handler = (args: Record<string, unknown>) => unknown;
 
-export const config: AppConfig = { supabaseUrl: "http://x", supabaseKey: "k", linkDomain: "links.test", flags: {} };
+export const config: AppConfig = { supabaseUrl: "http://x", supabaseKey: "k", linkDomain: "links.test", flags: {}, version: "9.9.9", build: "abc123" };
 
 export interface FakeBackend extends Backend {
   calls: { name: string; args: unknown }[];

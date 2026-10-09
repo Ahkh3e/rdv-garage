@@ -102,6 +102,8 @@ else
 fi
 
 export RDV_FREE_APPLE_ID=1
+EXPO_PUBLIC_BUILD="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo dev)"; [ -z "$(git -C "$root" status --porcelain 2>/dev/null)" ] || EXPO_PUBLIC_BUILD="$EXPO_PUBLIC_BUILD+"
+export EXPO_PUBLIC_BUILD
 bundle_id="$(cd "$mobile" && npx expo config --type public --json 2>/dev/null | node -e 'console.log(JSON.parse(require("fs").readFileSync(0)).ios.bundleIdentifier)')"
 [ -n "$bundle_id" ] || { say "BLOCKED: could not read the bundle identifier from the Expo config." >&2; exit 1; }
 say "bundle id: $bundle_id (extension $bundle_id.LiveActivity)"
