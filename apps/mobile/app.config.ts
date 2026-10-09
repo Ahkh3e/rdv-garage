@@ -14,7 +14,7 @@ export function buildConfig(env: Env): ExpoConfig {
     name: "RDV Garage",
     slug: "rdv-garage",
     scheme: "rdvgarage",
-    version: "0.0.1",
+    version: "0.0.4",
     orientation: "portrait",
     userInterfaceStyle: "dark",
     backgroundColor: "#080A0F",

@@ -119,6 +119,11 @@ describe("account management screens", () => {
     share.mockRestore();
   });
 
+  it("shows the app version and build under Delete account", async () => {
+    await openMe(signedIn());
+    expect(screen.getByTestId("me-version")).toHaveTextContent("Rendezview 9.9.9 (abc123)");
+  });
+
   it("deletes the account only after the handle is typed, then signs out", async () => {
     const backend = signedIn({ "fn.delete-account": () => ({ ok: true }) });
     await openMe(backend);

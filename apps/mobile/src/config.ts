@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import type { AppConfig } from "@rdv/core";
 
 function readFlags(): Record<string, boolean> {
@@ -14,4 +15,6 @@ export const config: AppConfig = {
   supabaseKey: process.env.EXPO_PUBLIC_SUPABASE_KEY ?? "",
   linkDomain: process.env.EXPO_PUBLIC_LINK_DOMAIN ?? "links.rdvgarage.example",
   flags: readFlags(),
+  version: Constants.expoConfig?.version ?? "0.0.0",
+  build: process.env.EXPO_PUBLIC_BUILD ?? "dev",
 };

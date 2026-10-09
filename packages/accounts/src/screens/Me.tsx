@@ -47,6 +47,7 @@ export function Me({ navigation }: { navigation: any }) {
         <Divider />
         <Row testID="me-delete" title="Delete account" danger left={<Ionicons name="trash-outline" size={20} color={colors.danger} />} onPress={() => navigation.navigate("DeleteAccount")} />
       </Card>
+      <Text testID="me-version" variant="caption" muted style={{ textAlign: "center", marginTop: 16 }}>Rendezview {shell.config.version} ({shell.config.build})</Text>
     </Screen>
   );
 }

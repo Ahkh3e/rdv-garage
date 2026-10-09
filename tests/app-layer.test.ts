@@ -13,7 +13,7 @@ import { admin, ANON_KEY, API_URL, callOk, createUser, sleep, uniq } from "./hel
 // against the local stack, so a wrong function name or argument in the app fails here.
 
 const MAILPIT = "http://127.0.0.1:54324";
-const config = { supabaseUrl: API_URL, supabaseKey: ANON_KEY, linkDomain: "links.test", flags: {} };
+const config = { supabaseUrl: API_URL, supabaseKey: ANON_KEY, linkDomain: "links.test", flags: {}, version: "0.0.0", build: "test" };
 
 function memoryStore() {
   const data = new Map<string, string>();
