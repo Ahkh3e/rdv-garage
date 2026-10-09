@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { admin, call, callOk, createCrew, createUser, sql } from "./helpers";
+import { admin, anon, call, callOk, createCrew, createUser, sql } from "./helpers";
 
 interface CrewRow {
   id: string; name: string; role: string; link_code: string | null; selected: boolean;
@@ -60,6 +60,17 @@ describe("crews", () => {
     expect(await colorOf(owner, member.handle)).toBeNull();
     for (const key of ["blue", "cyan", "green", "lime", "yellow", "orange", "red", "pink", "purple", "white"]) {
       expect((await call(member.client, "accounts", "update_profile", { p_car_color: key })).error).toBeNull();
+    }
+  });
+
+  it("keeps the profile and crew functions closed to anonymous callers", async () => {
+    for (const [schema, fn, args] of [
+      ["accounts", "my_profile", {}],
+      ["accounts", "update_profile", { p_car_color: "pink" }],
+      ["crews", "list_my_crews", {}],
+    ] as const) {
+      const result = await call(anon, schema, fn, args);
+      expect(result.error).toMatch(/permission denied/i);
     }
   });
 

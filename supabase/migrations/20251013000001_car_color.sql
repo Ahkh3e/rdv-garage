@@ -71,7 +71,7 @@ end $$;
 
 grant execute on function accounts.my_profile(), accounts.update_profile(text, text, boolean, text, text, boolean) to authenticated;
 
--- The member list shows whether voice is off, to moderators and to the person themselves.
+-- Same body as the previous definition (walkie migration), plus car_color in each member.
 create or replace function crews.list_my_crews() returns jsonb
 language plpgsql stable security definer set search_path = ''
 as $$
