@@ -9,7 +9,7 @@ interface CrewRow {
   role: CrewRole;
   link_code: string | null;
   selected: boolean;
-  members: { user_id: string; handle: string; avatar_path: string | null; car_icon?: string; role: CrewRole; live: boolean; voice_off?: boolean }[];
+  members: { user_id: string; handle: string; avatar_path: string | null; car_icon?: string; car_color?: string | null; role: CrewRole; live: boolean; voice_off?: boolean }[];
 }
 
 export async function loadCrews(shell: Shell): Promise<void> {
@@ -23,7 +23,7 @@ export async function loadCrews(shell: Shell): Promise<void> {
     role: row.role,
     linkCode: row.link_code,
     selected: row.selected,
-    members: (row.members ?? []).map((m) => ({ userId: m.user_id, handle: m.handle, avatarPath: m.avatar_path, carIcon: m.car_icon ?? "gt", role: m.role, live: m.live, voiceOff: m.voice_off === true })),
+    members: (row.members ?? []).map((m) => ({ userId: m.user_id, handle: m.handle, avatarPath: m.avatar_path, carIcon: m.car_icon ?? "gt", carColor: m.car_color ?? null, role: m.role, live: m.live, voiceOff: m.voice_off === true })),
   }));
   shell.crewContext.setCrews(crews);
 }

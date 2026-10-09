@@ -162,7 +162,7 @@ export function RoomScreen({ navigation, route }: { navigation: any; route: { pa
   };
 
   return (
-    <Screen scroll={false} padded={false} topInset={false}>
+    <Screen scroll={false} padded={false} topInset={false} bottomInset>
       <FlatList
         testID="message-list"
         inverted

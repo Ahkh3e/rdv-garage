@@ -9,7 +9,7 @@ import { openSettings } from "./permissions";
 let controller: LiveController | null = null;
 export const setController = (c: LiveController) => void (controller = c);
 
-export function GoLiveControl() {
+export function GoLiveControl({ compact }: { compact?: boolean }) {
   const shell = useShell();
   const crewState = useCrewState();
   const live = useLiveState();
@@ -69,8 +69,8 @@ export function GoLiveControl() {
   if (live.live) {
     const names = crewState.crews.filter((c) => live.crewIds.includes(c.id)).map((c) => c.name);
     return (
-      <View style={styles.dock} pointerEvents="box-none">
-        <Glass kind="control" style={styles.livePill}>
+      <View style={[styles.dock, compact && styles.dockCompact]} pointerEvents="box-none">
+        <Glass kind="control" style={[styles.livePill, compact && styles.livePillCompact]}>
           <PulseDot />
           <View style={{ flex: 1 }}>
             <Text variant="headline">Live</Text>
@@ -84,7 +84,7 @@ export function GoLiveControl() {
 
   const noCrews = crewState.loaded && crewState.crews.length === 0;
   return (
-    <View style={styles.dock} pointerEvents="box-none">
+    <View style={[styles.dock, compact && styles.dockCompact]} pointerEvents="box-none">
       <Pressable
         testID="golive-button"
         accessibilityRole="button"
@@ -135,7 +135,9 @@ export function GoLiveControl() {
 }
 
 const styles = StyleSheet.create({
-  dock: { position: "absolute", left: 16, right: 16, bottom: 35, alignItems: "center" },
+  dock: { position: "absolute", left: 16, right: 16, bottom: 24, alignItems: "center" },
+  dockCompact: { alignItems: "flex-end" },
+  livePillCompact: { alignSelf: "flex-end", width: 210 },
   cta: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.accent, paddingHorizontal: 28, minHeight: 56, minWidth: 168, justifyContent: "center", borderRadius: radii.pill, shadowColor: "#000", shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
   livePill: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "stretch", borderRadius: radii.md, paddingVertical: 10, paddingLeft: 12, paddingRight: 8 },
   crewRow: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 56, paddingHorizontal: 14, borderRadius: radii.md, borderCurve: "continuous", borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.fill },

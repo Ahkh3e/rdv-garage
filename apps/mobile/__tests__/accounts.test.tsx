@@ -148,4 +148,18 @@ describe("account management screens", () => {
     await fireEvent.press(await screen.findByTestId("car-rally"));
     await waitFor(() => expect(backend.calls.find((c) => c.name === "accounts.update_profile")?.args).toEqual({ p_car_icon: "rally" }));
   });
+  it("chooses a car colour at once and restores the crew colour", async () => {
+    const backend = signedIn({ "accounts.update_profile": () => null });
+    const shell = await openMe(backend);
+    await fireEvent.press(screen.getByTestId("me-car"));
+    await fireEvent.press(await screen.findByTestId("car-color-pink"));
+    const mine = () => shell.crewContext.store.get().crews[0]!.members.find((m) => m.userId === "user-1")!.carColor;
+    await waitFor(() => expect(mine()).toBe("pink"));
+    await waitFor(() => expect(backend.calls.filter((c) => c.name === "accounts.update_profile").at(-1)?.args).toEqual({ p_car_color: "pink" }));
+    await waitFor(() => expect(screen.getByTestId("car-color-pink").props.accessibilityState.selected).toBe(true));
+    await fireEvent.press(screen.getByTestId("car-color-crew"));
+    await waitFor(() => expect(backend.calls.filter((c) => c.name === "accounts.update_profile").at(-1)?.args).toEqual({ p_clear_car_color: true }));
+    await waitFor(() => expect(screen.getByTestId("car-color-crew").props.accessibilityState.selected).toBe(true));
+    expect(mine()).toBeNull();
+  });
 });

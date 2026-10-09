@@ -46,6 +46,45 @@ export function appendTrail(trail: TrailPoint[], point: TrailPoint, now: number)
   return trimmed.length > MAX_POINTS ? trimmed.slice(trimmed.length - MAX_POINTS) : trimmed;
 }
 
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+function hexToHsl(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  const part = (v: number) => Math.round(clamp01(v + m) * 255).toString(16).padStart(2, "0");
+  return `#${part(r)}${part(g)}${part(b)}`.toUpperCase();
+}
+
+// A more saturated, lighter version of a colour, for trails that glow on the dark map. Greys and whites (almost no chroma) only get lighter.
+export function neonOf(hex: string): string {
+  const [h, s, l] = hexToHsl(hex);
+  if ((1 - Math.abs(2 * l - 1)) * s < 0.12) return hslToHex(h, s, Math.max(l, 0.9));
+  return hslToHex(h, 1, Math.min(0.72, Math.max(0.6, l + 0.1)));
+}
+
+// The bright core of a neon trail: the neon colour pulled toward white.
+export function coreOf(hex: string): string {
+  const [h, s, l] = hexToHsl(neonOf(hex));
+  return hslToHex(h, Math.min(1, s), Math.min(0.92, l + 0.2));
+}
+
 export interface TrailSet {
   color: string;
   points: TrailPoint[];
@@ -99,6 +138,8 @@ export function trailFeatures(trails: Record<string, TrailSet>): GeoJSON.Feature
   const features: GeoJSON.Feature[] = [];
   for (const [id, trail] of Object.entries(trails)) {
     const points = trailPath(trail.points);
+    const neon = neonOf(trail.color);
+    const core = coreOf(trail.color);
     let back = 0;
     for (let i = points.length - 1; i > 0; i--) {
       const a = points[i - 1]!;
@@ -108,7 +149,7 @@ export function trailFeatures(trails: Record<string, TrailSet>): GeoJSON.Feature
       features.push({
         type: "Feature",
         id: `${id}-${i}`,
-        properties: { color: trail.color, a: Math.max(0.08, 0.9 * (1 - fade)) },
+        properties: { color: neon, core, a: Math.max(0.1, 1 - 0.92 * fade) },
         geometry: { type: "LineString", coordinates: [[a.lng, a.lat], [b.lng, b.lat]] },
       });
     }

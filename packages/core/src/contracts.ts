@@ -10,6 +10,7 @@ export interface Profile {
   handle: string;
   avatarPath: string | null;
   carIcon: string;
+  carColor?: string | null;
   // The terms version this person accepted. Absent when unknown; a different value asks them to accept again.
   termsVersion?: string | null;
 }
@@ -71,6 +72,7 @@ export interface CrewMember {
   handle: string;
   avatarPath: string | null;
   carIcon: string;
+  carColor?: string | null;
   role: CrewRole;
   live: boolean;
   // Voice is off for this member in this crew. Known only to moderators and to the member.
@@ -209,6 +211,7 @@ export interface Poi extends GeoPoint {
 export interface MapController {
   queryPois(): Promise<Poi[]>;
   flyTo(point: GeoPoint, zoom?: number): void;
+  openAtLeastHalf?(): void;
 }
 
 export interface MapBridge {
@@ -224,6 +227,9 @@ export interface MapBridge {
   flyTo(point: GeoPoint, zoom?: number): void;
   longPress(point: GeoPoint): void;
   onLongPress(fn: (point: GeoPoint) => void): Unsubscribe;
+  requestAtLeastHalf(): void;
+  press(): void;
+  onPress(fn: () => void): Unsubscribe;
 }
 
 // ---- Shell and modules --------------------------------------------------------
