@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Keyboard, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Easing, Keyboard, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, PanResponder, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { Camera, GeoJSONSource, Layer, Map, ViewAnnotation, type CameraRef, type MapRef } from "@maplibre/maplibre-react-native";
-import { Avatar, Button, CarIcon, Glass, GlassButton, PIN_KIND, RDV_KIND, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, formatDistance, useShell, useStore } from "@rdv/core";
+import { Avatar, Button, CarIcon, carColorHex, Glass, GlassButton, PIN_KIND, RDV_KIND, Slot, Text, bearingDegrees, colors, crewStyle, haversineMeters, radii, useCrewState, usePositions, useSession, formatDistance, useMapTops, useShell, useStore } from "@rdv/core";
 import { CarLayer, type CarInput } from "./CarLayer";
 import { PinLayer } from "./PinLayer";
 import { poisFromFeatures } from "./pois";
 import { holdHeading } from "./heading";
 import { RoadIndex, linesFromFeatures } from "./roadSnap";
 import { appendTrail, snapTrail, trailFeatures, type TrailPoint, type TrailSet } from "./trails";
+import { SHEET_STOPS, atLeastHalf, biggerMap, snapStop, tapStop, zoomControlsFit, type SheetStop } from "./sheet";
 import { FLAT_PITCH, FOLLOW_CAMERA, POI_LAYER, rdvNightStyle, rdvNightStyleFlat } from "./style";
 
 const TORONTO: [number, number] = [-79.3832, 43.6532];
 const FADE_AFTER_MS = 45000;
-const EXPANDED = 0.75;
-const COLLAPSED = 0.25;
 const SHEET_OVERLAP = 20;
+const CONTROLS_BOTTOM = SHEET_OVERLAP + 96;
 const MIN_ZOOM = 3;
 const MAX_ZOOM = 19;
 const JUMP_ZOOM = 16;
@@ -28,7 +28,8 @@ const MIN_SNAP_ZOOM = 13.5;
 // Like a navigation route: the trail is as wide as the road under it, so its width follows the map style's road widths.
 const roadWidth = (k: number) => ["interpolate", ["exponential", 1.4], ["zoom"], 8, 0.8 * k, 12, 2 * k, 14, 4 * k, 16, 7 * k, 18, 14 * k, 20, 28 * k] as never;
 const TRAIL_WIDTH = roadWidth(1);
-const TRAIL_GLOW_WIDTH = roadWidth(1.7);
+const TRAIL_CORE_WIDTH = roadWidth(0.4);
+const TRAIL_GLOW_WIDTH = roadWidth(2.6);
 
 interface Me {
   lat: number;
@@ -75,29 +76,79 @@ export function MapScreen() {
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied">("unknown");
   const [now, setNow] = useState(Date.now());
   const [height, setHeight] = useState(0);
-  const [expanded, setExpanded] = useState(true);
+  const [stop, setStop] = useState<SheetStop>("half");
+  const [dragging, setDragging] = useState(false);
+  const tops = useMapTops();
   const mapHeight = useRef(new Animated.Value(0)).current;
+  const mapNow = useRef(0);
+  const dragStart = useRef(0);
+  const screenHeight = useRef(0);
+  const stopRef = useRef<SheetStop>("half");
+  const tapDirection = useRef<1 | -1>(1);
+  const expanded = stop !== "small";
+
+  useEffect(() => {
+    const id = mapHeight.addListener(({ value }) => void (mapNow.current = value));
+    return () => mapHeight.removeListener(id);
+  }, [mapHeight]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(timer);
   }, []);
 
-  // The map takes three quarters of the screen. Scrolling the member list up squeezes it to a quarter, and jumping to
-  // someone opens it back up.
-  useEffect(() => {
-    if (!height) return;
-    Animated.timing(mapHeight, {
-      toValue: Math.round(height * (expanded ? EXPANDED : COLLAPSED)),
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [height, expanded, mapHeight]);
+  // The crew sheet has three stops: the map takes three quarters, half or a quarter of the screen. A drag snaps to the
+  // nearest stop (a flick carries on to the next), a tap on the handle walks them, and scrolling the member list pulls
+  // the sheet up. Jumping to someone opens the map back up to at least halfway.
+  const goTo = useCallback(
+    (next: SheetStop) => {
+      stopRef.current = next;
+      setStop(next);
+      if (!screenHeight.current) return;
+      Animated.timing(mapHeight, {
+        toValue: Math.round(screenHeight.current * SHEET_STOPS[next]),
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    },
+    [mapHeight],
+  );
+
+  const pan = useMemo(() => {
+    const release = (velocity: number) => {
+      setDragging(false);
+      const next = snapStop(mapNow.current, screenHeight.current, velocity);
+      tapDirection.current = next === "large" ? 1 : next === "small" ? -1 : tapDirection.current;
+      goTo(next);
+    };
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderGrant: () => {
+        mapHeight.stopAnimation();
+        dragStart.current = mapNow.current;
+        setDragging(true);
+      },
+      onPanResponderMove: (_, g) => {
+        const h = screenHeight.current;
+        mapHeight.setValue(Math.min(h * SHEET_STOPS.large, Math.max(h * SHEET_STOPS.small, dragStart.current + g.dy)));
+      },
+      onPanResponderRelease: (_, g) => release(g.vy),
+      onPanResponderTerminate: (_, g) => release(g.vy),
+    });
+  }, [goTo, mapHeight]);
+
+  const onHandleTap = () => {
+    Haptics.selectionAsync().catch(() => undefined);
+    const next = tapStop(stopRef.current, tapDirection.current);
+    tapDirection.current = next.direction;
+    goTo(next.stop);
+  };
 
   const onLayout = (event: LayoutChangeEvent) => {
     const next = event.nativeEvent.layout.height;
-    if (!height) mapHeight.setValue(Math.round(next * EXPANDED));
+    screenHeight.current = next;
+    mapHeight.setValue(Math.round(next * SHEET_STOPS[stopRef.current]));
     setHeight(next);
   };
 
@@ -169,7 +220,7 @@ export function MapScreen() {
         flyTo: (point, target) => {
           setFollow(false);
           setFollowMember(false);
-          setExpanded(true);
+          openMap();
           moveCamera(point, target ?? Math.max(zoom.current, JUMP_ZOOM), 700);
         },
       }),
@@ -209,13 +260,13 @@ export function MapScreen() {
   }, [me, follow, easeToMe]);
 
   const lookup = useMemo(() => {
-    const map = new globalThis.Map<string, { handle: string; avatarPath: string | null; carIcon: string; styleIndex: number; crewNames: string[] }>();
+    const map = new globalThis.Map<string, { handle: string; avatarPath: string | null; carIcon: string; carColor: string | null; styleIndex: number; crewNames: string[] }>();
     for (const crew of crewState.crews) {
       if (!crewState.selected.includes(crew.id)) continue;
       for (const member of crew.members) {
         const known = map.get(member.userId);
         if (known) known.crewNames.push(crew.name);
-        else map.set(member.userId, { handle: member.handle, avatarPath: member.avatarPath, carIcon: member.carIcon, styleIndex: crew.styleIndex, crewNames: [crew.name] });
+        else map.set(member.userId, { handle: member.handle, avatarPath: member.avatarPath, carIcon: member.carIcon, carColor: carColorHex(member.carColor), styleIndex: crew.styleIndex, crewNames: [crew.name] });
       }
     }
     return map;
@@ -223,6 +274,7 @@ export function MapScreen() {
 
   const myId = session.status === "signedIn" ? session.userId : null;
   const myIcon = session.status === "signedIn" ? session.profile.carIcon : "gt";
+  const myColor = (session.status === "signedIn" ? carColorHex(session.profile.carColor) : null) ?? colors.accentBright;
 
   // The 3D cars sit in the map itself, so a heading is a compass heading. A parked car keeps its last heading.
   const headingFor = (id: string, heading: number | null | undefined) => {
@@ -279,13 +331,13 @@ export function MapScreen() {
       // Someone who has stopped sending updates keeps their marker (it fades) but their trail is cleared.
       if (!info || t - p.ts > FADE_AFTER_MS) continue;
       const point: TrailPoint = { lng: p.lng, lat: p.lat, ts: p.ts };
-      next[p.userId] = { color: crewStyle(info.styleIndex).tint, points: appendTrail(trails.current[p.userId]?.points ?? [], point, t) };
+      next[p.userId] = { color: info.carColor ?? crewStyle(info.styleIndex).tint, points: appendTrail(trails.current[p.userId]?.points ?? [], point, t) };
     }
-    if (me) next.me = { color: colors.accentBright, points: appendTrail(trails.current.me?.points ?? [], { lng: me.lng, lat: me.lat, ts: t }, t) };
+    if (me) next.me = { color: myColor, points: appendTrail(trails.current.me?.points ?? [], { lng: me.lng, lat: me.lat, ts: t }, t) };
     for (const trail of Object.values(next)) snapTrail(trail.points, roads.current);
     trails.current = next;
     dirty.current = true;
-  }, [positions, crewState.selected, me]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [positions, crewState.selected, me, myColor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New road geometry arrived: match any points that were waiting for it.
   useEffect(() => {
@@ -310,6 +362,10 @@ export function MapScreen() {
     camera.current?.easeTo({ center: [selectedPosition.lng, selectedPosition.lat], zoom: JUMP_ZOOM, pitch: pitch.current, bearing: 0, duration: 800 });
   }, [followMember, selectedPosition?.lat, selectedPosition?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const openMap = () => {
+    if (stopRef.current !== atLeastHalf(stopRef.current)) goTo(atLeastHalf(stopRef.current));
+  };
+
   const closeCard = () => {
     setSelected(null);
     setFollowMember(false);
@@ -326,9 +382,9 @@ export function MapScreen() {
   const cars: CarInput[] = [
     ...others.map((p) => {
       const info = lookup.get(p.userId)!;
-      return { id: p.userId, lng: p.lng, lat: p.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: crewStyle(info.styleIndex).tint, label: info.handle };
+      return { id: p.userId, lng: p.lng, lat: p.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: info.carColor ?? crewStyle(info.styleIndex).tint, tint: crewStyle(info.styleIndex).tint, label: info.handle };
     }),
-    ...(me ? [{ id: "me", lng: headPosition("me", me).lng, lat: headPosition("me", me).lat, heading: headingFor("me", me.heading), icon: myIcon, color: colors.accentBright, self: true }] : []),
+    ...(me ? [{ id: "me", lng: headPosition("me", me).lng, lat: headPosition("me", me).lat, heading: headingFor("me", me.heading), icon: myIcon, color: myColor, self: true }] : []),
   ];
 
   const showEveryone = () => {
@@ -345,7 +401,7 @@ export function MapScreen() {
     const bounds: [number, number, number, number] =
       east - west < pad && north - south < pad ? [west - pad, south - pad, east + pad, north + pad] : [west, south, east, north];
     setFollow(false);
-    setExpanded(true);
+    openMap();
     camera.current?.fitBounds(bounds, {
       padding: { top: 120, right: 90, bottom: 110, left: 90 },
       pitch: 0,
@@ -358,7 +414,7 @@ export function MapScreen() {
     setSelected(id);
     setFollowMember(false);
     setFollow(false);
-    setExpanded(true);
+    openMap();
     moveCamera({ lat, lng }, JUMP_ZOOM, 800);
   };
 
@@ -387,13 +443,16 @@ export function MapScreen() {
   };
 
   const onListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (event.nativeEvent.contentOffset.y > 12) setExpanded(false);
+    if (event.nativeEvent.contentOffset.y > 12 && stopRef.current !== "small") goTo("small");
   };
   const onListRelease = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (event.nativeEvent.contentOffset.y <= -24) setExpanded(true);
+    if (event.nativeEvent.contentOffset.y <= -24) goTo(biggerMap(stopRef.current));
   };
 
   const live = others.length;
+  const large = stop === "large";
+  const mapPx = height * SHEET_STOPS[stop];
+  const showZoom = !dragging && (large || (stop === "half" && zoomControlsFit(mapPx, tops.below, CONTROLS_BOTTOM, 2)));
 
   return (
     <View style={styles.root} onLayout={onLayout}>
@@ -426,14 +485,15 @@ export function MapScreen() {
         >
           <Camera ref={camera} initialViewState={{ center: TORONTO, zoom: 11.5 }} />
           <GeoJSONSource id="trails" data={trailData}>
-            <Layer type="line" id="trail-glow" style={{ lineColor: ["get", "color"], lineOpacity: ["*", ["get", "a"], 0.35], lineWidth: TRAIL_GLOW_WIDTH, lineBlur: 10, lineCap: "round", lineJoin: "round" }} />
-            <Layer type="line" id="trail-line" style={{ lineColor: ["get", "color"], lineOpacity: ["get", "a"], lineWidth: TRAIL_WIDTH, lineCap: "round", lineJoin: "round" }} />
+            <Layer type="line" id="trail-glow" style={{ lineColor: ["get", "color"], lineOpacity: ["*", ["get", "a"], 0.55], lineWidth: TRAIL_GLOW_WIDTH, lineBlur: 12, lineCap: "round", lineJoin: "round" }} />
+            <Layer type="line" id="trail-line" style={{ lineColor: ["get", "color"], lineOpacity: ["get", "a"], lineWidth: TRAIL_WIDTH, lineBlur: 1, lineCap: "round", lineJoin: "round" }} />
+            <Layer type="line" id="trail-core" style={{ lineColor: ["get", "core"], lineOpacity: ["get", "a"], lineWidth: TRAIL_CORE_WIDTH, lineCap: "round", lineJoin: "round" }} />
           </GeoJSONSource>
           <PinLayer />
           <CarLayer cars={cars} zoom={mapZoom} />
         </Map>
 
-        <View style={styles.top} pointerEvents="box-none">
+        <View style={[styles.top, { top: tops.pill }]} pointerEvents="box-none">
           <Pressable testID="map-show-everyone" accessibilityRole="button" accessibilityLabel="Show everyone live" onPress={showEveryone}>
             <Glass kind="control" style={styles.pill}>
               <View style={[styles.pillDot, { backgroundColor: live > 0 ? colors.accentBright : colors.subtle }]} />
@@ -443,12 +503,12 @@ export function MapScreen() {
         </View>
 
         {permission === "denied" ? (
-          <View style={styles.notice}>
+          <View style={[styles.notice, { top: tops.below }]}>
             <Text variant="body">Location is off, so the map can't follow you. Turn it on in Settings.</Text>
           </View>
         ) : null}
 
-                {expanded ? (
+        {showZoom ? (
           <View style={styles.controls} pointerEvents="box-none">
             <GlassButton testID="map-zoom-in" label="Zoom in" onPress={() => step(1)}>
               <Feather name="plus" size={20} color={colors.text} />
@@ -456,12 +516,16 @@ export function MapScreen() {
             <GlassButton testID="map-zoom-out" label="Zoom out" onPress={() => step(-1)}>
               <Feather name="minus" size={20} color={colors.text} />
             </GlassButton>
-            <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} onPress={toggleView}>
-              <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
-            </GlassButton>
-            <GlassButton testID="map-recenter" label="Back to my location" onPress={rehome}>
-              <Feather name="navigation" size={19} color={follow ? colors.accentBright : colors.text} />
-            </GlassButton>
+            {large ? (
+              <>
+                <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} onPress={toggleView}>
+                  <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
+                </GlassButton>
+                <GlassButton testID="map-recenter" label="Back to my location" onPress={rehome}>
+                  <Feather name="navigation" size={19} color={follow ? colors.accentBright : colors.text} />
+                </GlassButton>
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -492,25 +556,35 @@ export function MapScreen() {
       </Animated.View>
 
       <Glass kind="sheet" style={styles.sheet}>
-        <Pressable testID="map-sheet-handle" accessibilityRole="button" accessibilityLabel={expanded ? "Show members" : "Show map"} onPress={() => { Haptics.selectionAsync().catch(() => undefined); setExpanded((v) => !v); }} style={styles.handleHit}>
-          <View style={styles.handle} />
-        </Pressable>
-        <View style={styles.sheetHeader}>
-          <Text variant="title">Crew</Text>
-          {expanded ? (
-            <Text variant="caption" muted>
-              {members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length} ${members.length === 1 ? "member" : "members"}`}
-            </Text>
-          ) : (
-            <View style={{ flexDirection: "row", gap: 8, alignSelf: "center" }}>
-              <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} size={36} onPress={toggleView}>
-                <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
-              </GlassButton>
-              <GlassButton testID="map-recenter" label="Back to my location" size={36} onPress={rehome}>
-                <Feather name="navigation" size={16} color={follow ? colors.accentBright : colors.text} />
-              </GlassButton>
-            </View>
-          )}
+        <View {...pan.panHandlers}>
+          <Pressable testID="map-sheet-handle" accessibilityRole="button" accessibilityLabel={`Crew sheet, map ${stop === "large" ? "large" : stop === "half" ? "half" : "small"}. Tap to move`} onPress={onHandleTap} style={styles.handleHit}>
+            <View style={styles.handle} />
+          </Pressable>
+          <View style={styles.sheetHeader}>
+            {large ? (
+              <>
+                <Text variant="title">Crew</Text>
+                <Text variant="caption" muted>
+                  {members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length} ${members.length === 1 ? "member" : "members"}`}
+                </Text>
+              </>
+            ) : (
+              <>
+                <View>
+                  <Text variant="title">Crew</Text>
+                  {stop === "half" ? <Text variant="caption" muted>{members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length}`}</Text> : null}
+                </View>
+                <View style={{ flexDirection: "row", gap: 8, alignSelf: "center" }}>
+                  <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} size={36} onPress={toggleView}>
+                    <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
+                  </GlassButton>
+                  <GlassButton testID="map-recenter" label="Back to my location" size={36} onPress={rehome}>
+                    <Feather name="navigation" size={16} color={follow ? colors.accentBright : colors.text} />
+                  </GlassButton>
+                </View>
+              </>
+            )}
+          </View>
         </View>
         <ScrollView
           testID="map-members"
@@ -632,13 +706,13 @@ export function MapScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   mapArea: { backgroundColor: colors.background },
-  top: { position: "absolute", top: 60, left: 16, right: 80, alignItems: "flex-start" },
+  top: { position: "absolute", left: 16, right: 80, alignItems: "flex-start" },
   pill: { flexDirection: "row", alignItems: "center", gap: 8, height: 32, paddingHorizontal: 12, borderRadius: radii.pill },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
-  notice: { position: "absolute", top: 208, left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
-  controls: { position: "absolute", right: 16, bottom: SHEET_OVERLAP + 96, gap: 12 },
+  notice: { position: "absolute", left: 16, right: 16, padding: 14, borderRadius: radii.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
+  controls: { position: "absolute", right: 16, bottom: CONTROLS_BOTTOM, gap: 12 },
   sheet: { flex: 1, marginTop: -SHEET_OVERLAP, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg, borderBottomWidth: 0 },
-  handleHit: { alignItems: "center", paddingTop: 8, paddingBottom: 8 },
+  handleHit: { alignItems: "center", paddingTop: 12, paddingBottom: 12 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.28)" },
   sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 8, minHeight: 44 },
   list: { flex: 1 },

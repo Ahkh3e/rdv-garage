@@ -1,4 +1,4 @@
-import { MAX_GAP_M, MAX_POINTS, MIN_STEP_M, TRAIL_M, TRAIL_MS, appendTrail, smooth, trailFeatures, type TrailPoint } from "../../../packages/map/src/trails";
+import { MAX_GAP_M, MAX_POINTS, MIN_STEP_M, TRAIL_M, TRAIL_MS, appendTrail, coreOf, neonOf, smooth, trailFeatures, type TrailPoint } from "../../../packages/map/src/trails";
 
 const start = { lng: -79.38, lat: 43.65 };
 const metresNorth = (m: number) => ({ lng: start.lng, lat: start.lat + m / 111320 });
@@ -65,5 +65,52 @@ describe("movement trails", () => {
     const out = smooth(corner);
     expect(out.length).toBeGreaterThan(corner.length);
     expect(out.some((p) => p.lng === start.lng && p.lat === start.lat + 0.0005)).toBe(false);
+  });
+});
+
+describe("neon colours", () => {
+  const lightness = (hex: string) => {
+    const n = parseInt(hex.slice(1), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+    return (Math.max(r!, g!, b!) + Math.min(r!, g!, b!)) / 2;
+  };
+  const saturation = (hex: string) => {
+    const n = parseInt(hex.slice(1), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+    const max = Math.max(r!, g!, b!);
+    const min = Math.min(r!, g!, b!);
+    return max === min ? 0 : (max - min) / (1 - Math.abs(max + min - 1));
+  };
+
+  it("makes a colour more saturated and lighter", () => {
+    const neon = neonOf("#2F6FF2");
+    expect(neon).toMatch(/^#[0-9A-F]{6}$/);
+    expect(saturation(neon)).toBeGreaterThan(saturation("#2F6FF2"));
+    expect(lightness(neon)).toBeGreaterThan(lightness("#2F6FF2"));
+    expect(saturation(neon)).toBeCloseTo(1, 1);
+  });
+
+  it("keeps a neon colour on its hue and a white neutral", () => {
+    expect(neonOf("#FF4FD8")).toMatch(/^#FF/);
+    const white = neonOf("#F2F5FA");
+    const n = parseInt(white.slice(1), 16);
+    const channels = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    expect(Math.max(...channels) - Math.min(...channels)).toBeLessThan(30);
+    expect(lightness(white)).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("makes the core lighter than the neon line", () => {
+    expect(lightness(coreOf("#3D7BFF"))).toBeGreaterThan(lightness(neonOf("#3D7BFF")));
+  });
+
+  it("puts the neon and core colours and a bright head on the trail segments", () => {
+    const points: TrailPoint[] = [at(0, 0), at(20, 1000), at(40, 2000)];
+    const fc = trailFeatures({ a: { color: "#3D7BFF", points } });
+    const first = fc.features[0]!.properties!;
+    const last = fc.features.at(-1)!.properties!;
+    expect(first.color).toBe(neonOf("#3D7BFF"));
+    expect(first.core).toBe(coreOf("#3D7BFF"));
+    expect(first.a).toBe(1);
+    expect(last.a).toBeLessThan(first.a);
   });
 });

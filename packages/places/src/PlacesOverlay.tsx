@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Keyboard, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { Glass, GlassButton, colors, radii, useShell, useStore, type Place } from "@rdv/core";
+import { Glass, GlassButton, MAP_GAP, MAP_ROW, MAP_SIDE, colors, radii, useMapTops, useShell, useStore, type Place } from "@rdv/core";
 import { PinCard, PlaceCard } from "./Cards";
 import { useController } from "./context";
 import { DropPinSheet } from "./DropPinSheet";
@@ -16,6 +16,8 @@ export function PlacesOverlay() {
   const { selection, pins } = useStore(controller.state);
   const [panel, setPanel] = useState<"search" | "nearby" | null>(null);
   const [now, setNow] = useState(Date.now());
+  const tops = useMapTops();
+  const [area, setArea] = useState(0);
 
   useEffect(() => controller.start(), [controller]);
   useEffect(() => shell.mapBridge.onLongPress((point) => controller.startDrop(point)), [shell, controller]);
@@ -49,8 +51,8 @@ export function PlacesOverlay() {
   const pin = selection?.kind === "pin" ? pins.find((p) => p.id === selection.pinId) : null;
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <View style={styles.top} pointerEvents="box-none">
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none" onLayout={(e) => setArea(e.nativeEvent.layout.height)}>
+      <View style={[styles.top, { top: tops.search }]} pointerEvents="box-none">
         <Glass kind="control" style={styles.search}>
           <SearchField search={search} onFocus={() => { cancelIdle(); setPanel("search"); }} onBlur={closeIfIdle} onClear={() => setPanel(null)} />
         </Glass>
@@ -59,7 +61,7 @@ export function PlacesOverlay() {
         </GlassButton>
       </View>
       {panel ? (
-        <Glass kind="sheet" style={styles.panel}>
+        <Glass kind="sheet" style={[styles.panel, { top: tops.below, maxHeight: Math.max(120, Math.min(360, area - tops.below - MAP_GAP)) }]}>
           {panel === "search" ? <SearchResults search={search} onChoose={choose} /> : <NearbyPanel onChoose={choose} onClose={() => setPanel(null)} />}
         </Glass>
       ) : null}
@@ -74,8 +76,8 @@ export function PlacesOverlay() {
 }
 
 const styles = StyleSheet.create({
-  top: { position: "absolute", top: 98, left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 10 },
+  top: { position: "absolute", left: MAP_SIDE, right: MAP_SIDE + MAP_ROW + 10, flexDirection: "row", alignItems: "center", gap: 10 },
   search: { flex: 1, borderRadius: radii.pill },
-  panel: { position: "absolute", top: 208, left: 16, right: 16, maxHeight: 360, borderRadius: radii.xl, overflow: "hidden" },
+  panel: { position: "absolute", left: 16, right: 16, borderRadius: radii.xl, overflow: "hidden" },
   card: { position: "absolute", left: 16, right: 76, bottom: 92 },
 });

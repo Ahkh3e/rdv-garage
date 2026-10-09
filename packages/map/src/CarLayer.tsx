@@ -12,6 +12,7 @@ export interface CarInput {
   heading: number;
   icon: string;
   color: string;
+  tint?: string;
   label?: string;
   stale?: boolean;
   self?: boolean;
@@ -125,12 +126,12 @@ export function CarLayer({ cars, zoom }: { cars: CarInput[]; zoom: number }) {
       {placed.map((c) =>
         c.self ? (
           <ViewAnnotation key={`halo-${c.id}`} id={`halo-${c.id}`} lngLat={[c.lng, c.lat]} anchor="center">
-            <PulseDot size={1} halo={70} />
+            <PulseDot size={1} halo={70} color={c.color} />
           </ViewAnnotation>
         ) : c.label ? (
           <ViewAnnotation key={`name-${c.id}`} id={`name-${c.id}`} lngLat={[c.lng, c.lat]} anchor="top" offset={[0, 0]}>
             <View style={[styles.pill, { opacity: c.stale ? 0.45 : 1 }]}>
-              <View style={[styles.dot, { backgroundColor: c.color }]} />
+              <View style={[styles.dot, { backgroundColor: c.tint ?? c.color }]} />
               <Text variant="caption" numberOfLines={1} style={{ color: colors.text }}>{c.label}</Text>
             </View>
           </ViewAnnotation>
