@@ -551,7 +551,7 @@ export function MapScreen() {
         ) : null}
 
         <View style={[StyleSheet.absoluteFill, { paddingBottom: SHEET_OVERLAP }]} pointerEvents="box-none">
-          <Slot name="map.overlay" />
+          <Slot name="map.overlay" compact={stop === "small"} />
         </View>
       </Animated.View>
 
