@@ -214,7 +214,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
 
   async function loadProfile(userId: string): Promise<void> {
     try {
-      const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; car_icon?: string; status: string; terms_version?: string | null }[]>("accounts", "my_profile");
+      const rows = await backend.rpc<{ id: string; handle: string; avatar_path: string | null; car_icon?: string; car_color?: string | null; status: string; terms_version?: string | null }[]>("accounts", "my_profile");
       const row = rows[0];
       if (!row || row.status === "deleted") {
         await backend.auth.signOut();
@@ -223,7 +223,7 @@ export function createShell(config: AppConfig, rawBackend: Backend): ShellRuntim
         await backend.auth.signOut();
         session.set({ status: "signedOut", notice: "suspended" });
       } else {
-        session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path, carIcon: row.car_icon ?? DEFAULT_CAR_ICON, termsVersion: row.terms_version } });
+        session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path, carIcon: row.car_icon ?? DEFAULT_CAR_ICON, carColor: row.car_color ?? null, termsVersion: row.terms_version } });
       }
     } catch (error) {
       if (error instanceof AppError && (error.code === "network" || error.code === "unknown_error")) {

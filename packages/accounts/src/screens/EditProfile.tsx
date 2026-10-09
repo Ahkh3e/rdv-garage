@@ -12,9 +12,9 @@ export function EditProfile({ navigation }: { navigation: any }) {
   const [saved, setSaved] = useState(false);
 
   const refresh = async () => {
-    const rows = await shell.backend.rpc<{ id: string; handle: string; avatar_path: string | null; car_icon?: string }[]>("accounts", "my_profile");
+    const rows = await shell.backend.rpc<{ id: string; handle: string; avatar_path: string | null; car_icon?: string; car_color?: string | null }[]>("accounts", "my_profile");
     const row = rows[0];
-    if (row) shell.session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path, carIcon: row.car_icon ?? "gt" } });
+    if (row) shell.session.set({ status: "signedIn", userId: row.id, profile: { id: row.id, handle: row.handle, avatarPath: row.avatar_path, carIcon: row.car_icon ?? "gt", carColor: row.car_color ?? null } });
   };
 
   const saveHandle = useAction(async () => {
