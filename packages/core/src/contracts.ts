@@ -211,6 +211,7 @@ export interface Poi extends GeoPoint {
 export interface MapController {
   queryPois(): Promise<Poi[]>;
   flyTo(point: GeoPoint, zoom?: number): void;
+  openAtLeastHalf?(): void;
 }
 
 export interface MapBridge {
@@ -226,6 +227,9 @@ export interface MapBridge {
   flyTo(point: GeoPoint, zoom?: number): void;
   longPress(point: GeoPoint): void;
   onLongPress(fn: (point: GeoPoint) => void): Unsubscribe;
+  requestAtLeastHalf(): void;
+  press(): void;
+  onPress(fn: () => void): Unsubscribe;
 }
 
 // ---- Shell and modules --------------------------------------------------------

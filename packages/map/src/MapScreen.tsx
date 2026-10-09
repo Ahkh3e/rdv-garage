@@ -19,6 +19,8 @@ const TORONTO: [number, number] = [-79.3832, 43.6532];
 const FADE_AFTER_MS = 45000;
 const SHEET_OVERLAP = 20;
 const CONTROLS_BOTTOM = SHEET_OVERLAP + 96;
+const NO_PADDING = { top: 0, left: 0, right: 0, bottom: 0 };
+const CARD_PADDING = { top: 0, left: 0, right: 0, bottom: 180 };
 const MIN_ZOOM = 3;
 const MAX_ZOOM = 19;
 const JUMP_ZOOM = 16;
@@ -78,6 +80,7 @@ export function MapScreen() {
   const [height, setHeight] = useState(0);
   const [stop, setStop] = useState<SheetStop>("half");
   const [dragging, setDragging] = useState(false);
+  const draggingRef = useRef(false);
   const tops = useMapTops();
   const mapHeight = useRef(new Animated.Value(0)).current;
   const mapNow = useRef(0);
@@ -97,9 +100,6 @@ export function MapScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // The crew sheet has three stops: the map takes three quarters, half or a quarter of the screen. A drag snaps to the
-  // nearest stop (a flick carries on to the next), a tap on the handle walks them, and scrolling the member list pulls
-  // the sheet up. Jumping to someone opens the map back up to at least halfway.
   const goTo = useCallback(
     (next: SheetStop) => {
       stopRef.current = next;
@@ -117,6 +117,7 @@ export function MapScreen() {
 
   const pan = useMemo(() => {
     const release = (velocity: number) => {
+      draggingRef.current = false;
       setDragging(false);
       const next = snapStop(mapNow.current, screenHeight.current, velocity);
       tapDirection.current = next === "large" ? 1 : next === "small" ? -1 : tapDirection.current;
@@ -127,6 +128,7 @@ export function MapScreen() {
       onPanResponderGrant: () => {
         mapHeight.stopAnimation();
         dragStart.current = mapNow.current;
+        draggingRef.current = true;
         setDragging(true);
       },
       onPanResponderMove: (_, g) => {
@@ -138,6 +140,10 @@ export function MapScreen() {
     });
   }, [goTo, mapHeight]);
 
+  const openMap = useCallback(() => {
+    if (stopRef.current !== atLeastHalf(stopRef.current)) goTo(atLeastHalf(stopRef.current));
+  }, [goTo]);
+
   const onHandleTap = () => {
     Haptics.selectionAsync().catch(() => undefined);
     const next = tapStop(stopRef.current, tapDirection.current);
@@ -147,8 +153,9 @@ export function MapScreen() {
 
   const onLayout = (event: LayoutChangeEvent) => {
     const next = event.nativeEvent.layout.height;
+    if (Math.abs(next - screenHeight.current) < 1) return;
     screenHeight.current = next;
-    mapHeight.setValue(Math.round(next * SHEET_STOPS[stopRef.current]));
+    if (!draggingRef.current) mapHeight.setValue(Math.round(next * SHEET_STOPS[stopRef.current]));
     setHeight(next);
   };
 
@@ -193,7 +200,7 @@ export function MapScreen() {
     const restore = levelled.current ?? pitch.current;
     if (near) {
       levelled.current = null;
-      camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration });
+      camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration, padding: CARD_PADDING });
       return;
     }
     levelled.current = restore;
@@ -207,7 +214,7 @@ export function MapScreen() {
       } finally {
         if (mine === moveSeq.current) {
           levelled.current = null;
-          camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration });
+          camera.current?.easeTo({ ...target, pitch: restore, bearing: 0, duration, padding: CARD_PADDING });
         }
       }
     })();
@@ -223,8 +230,9 @@ export function MapScreen() {
           openMap();
           moveCamera(point, target ?? Math.max(zoom.current, JUMP_ZOOM), 700);
         },
+        openAtLeastHalf: openMap,
       }),
-    [shell],
+    [shell, openMap],
   );
 
   useEffect(() => {
@@ -250,6 +258,7 @@ export function MapScreen() {
       pitch: pitch.current,
       bearing: lastHeading.current,
       duration,
+      padding: NO_PADDING,
       easing: "linear",
     });
   }, []);
@@ -285,6 +294,16 @@ export function MapScreen() {
     // Only members who are live: someone who stopped sending updates is off the map, not shown dimmed or idle.
     (p) => p.userId !== myId && now - p.ts <= FADE_AFTER_MS && p.crewIds.some((id) => crewState.selected.includes(id)) && lookup.has(p.userId),
   );
+
+  const memberColor = (info: { carColor: string | null; styleIndex: number }) => info.carColor ?? crewStyle(info.styleIndex).tint;
+
+  useEffect(() => {
+    for (const [id, trail] of Object.entries(trails.current)) {
+      const info = lookup.get(id);
+      trail.color = id === "me" ? myColor : info ? memberColor(info) : trail.color;
+    }
+    dirty.current = true;
+  }, [lookup, myColor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The road lines the map has already loaded for what is on screen. Trails are matched to these on the phone only.
   const refreshRoads = useCallback((center?: [number, number]) => {
@@ -331,7 +350,7 @@ export function MapScreen() {
       // Someone who has stopped sending updates keeps their marker (it fades) but their trail is cleared.
       if (!info || t - p.ts > FADE_AFTER_MS) continue;
       const point: TrailPoint = { lng: p.lng, lat: p.lat, ts: p.ts };
-      next[p.userId] = { color: info.carColor ?? crewStyle(info.styleIndex).tint, points: appendTrail(trails.current[p.userId]?.points ?? [], point, t) };
+      next[p.userId] = { color: memberColor(info), points: appendTrail(trails.current[p.userId]?.points ?? [], point, t) };
     }
     if (me) next.me = { color: myColor, points: appendTrail(trails.current.me?.points ?? [], { lng: me.lng, lat: me.lat, ts: t }, t) };
     for (const trail of Object.values(next)) snapTrail(trail.points, roads.current);
@@ -359,12 +378,8 @@ export function MapScreen() {
   // Following someone else: the camera stays on them as they move. Dragging the map lets go.
   useEffect(() => {
     if (!followMember || !selectedPosition) return;
-    camera.current?.easeTo({ center: [selectedPosition.lng, selectedPosition.lat], zoom: JUMP_ZOOM, pitch: pitch.current, bearing: 0, duration: 800 });
+    camera.current?.easeTo({ center: [selectedPosition.lng, selectedPosition.lat], zoom: JUMP_ZOOM, pitch: pitch.current, bearing: 0, duration: 800, padding: CARD_PADDING });
   }, [followMember, selectedPosition?.lat, selectedPosition?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const openMap = () => {
-    if (stopRef.current !== atLeastHalf(stopRef.current)) goTo(atLeastHalf(stopRef.current));
-  };
 
   const closeCard = () => {
     setSelected(null);
@@ -382,7 +397,7 @@ export function MapScreen() {
   const cars: CarInput[] = [
     ...others.map((p) => {
       const info = lookup.get(p.userId)!;
-      return { id: p.userId, lng: p.lng, lat: p.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: info.carColor ?? crewStyle(info.styleIndex).tint, tint: crewStyle(info.styleIndex).tint, label: info.handle };
+      return { id: p.userId, lng: p.lng, lat: p.lat, heading: headingFor(p.userId, p.heading), icon: info.carIcon, color: memberColor(info), tint: crewStyle(info.styleIndex).tint, label: info.handle };
     }),
     ...(me ? [{ id: "me", lng: headPosition("me", me).lng, lat: headPosition("me", me).lat, heading: headingFor("me", me.heading), icon: myIcon, color: myColor, self: true }] : []),
   ];
@@ -424,7 +439,7 @@ export function MapScreen() {
     setFollowMember(false);
     setSelected(null);
     if (me) easeToMe(me, 500);
-    else camera.current?.easeTo({ center: TORONTO, zoom: 11.5, pitch: 0, bearing: 0, duration: 500 });
+    else camera.current?.easeTo({ center: TORONTO, zoom: 11.5, pitch: 0, bearing: 0, duration: 500, padding: NO_PADDING });
   };
 
   const toggleView = () => {
@@ -468,7 +483,10 @@ export function MapScreen() {
           attribution
           attributionPosition={{ bottom: SHEET_OVERLAP + 6, left: 8 }}
           onDidFinishRenderingMapFully={() => refreshRoads()}
-          onPress={() => Keyboard.dismiss()}
+          onPress={() => {
+            Keyboard.dismiss();
+            shell.mapBridge.press();
+          }}
           onLongPress={(event) => shell.mapBridge.longPress({ lat: event.nativeEvent.lngLat[1]!, lng: event.nativeEvent.lngLat[0]! })}
           onRegionDidChange={(event) => {
             zoom.current = event.nativeEvent.zoom;
@@ -561,28 +579,23 @@ export function MapScreen() {
             <View style={styles.handle} />
           </Pressable>
           <View style={styles.sheetHeader}>
+            <View>
+              <Text variant="title">Crew</Text>
+              {stop === "half" ? <Text variant="caption" muted>{members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length}`}</Text> : null}
+            </View>
             {large ? (
-              <>
-                <Text variant="title">Crew</Text>
-                <Text variant="caption" muted>
-                  {members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length} ${members.length === 1 ? "member" : "members"}`}
-                </Text>
-              </>
+              <Text variant="caption" muted>
+                {members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length} ${members.length === 1 ? "member" : "members"}`}
+              </Text>
             ) : (
-              <>
-                <View>
-                  <Text variant="title">Crew</Text>
-                  {stop === "half" ? <Text variant="caption" muted>{members.length === 0 ? "No members on the map" : `${live} live  ·  ${members.length}`}</Text> : null}
-                </View>
-                <View style={{ flexDirection: "row", gap: 8, alignSelf: "center" }}>
-                  <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} size={36} onPress={toggleView}>
-                    <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
-                  </GlassButton>
-                  <GlassButton testID="map-recenter" label="Back to my location" size={36} onPress={rehome}>
-                    <Feather name="navigation" size={16} color={follow ? colors.accentBright : colors.text} />
-                  </GlassButton>
-                </View>
-              </>
+              <View style={{ flexDirection: "row", gap: 8, alignSelf: "center" }}>
+                <GlassButton testID="map-view-toggle" label={view3d ? "Switch to 2D map" : "Switch to 3D map"} size={36} onPress={toggleView}>
+                  <Text variant="caption" bold>{view3d ? "2D" : "3D"}</Text>
+                </GlassButton>
+                <GlassButton testID="map-recenter" label="Back to my location" size={36} onPress={rehome}>
+                  <Feather name="navigation" size={16} color={follow ? colors.accentBright : colors.text} />
+                </GlassButton>
+              </View>
             )}
           </View>
         </View>

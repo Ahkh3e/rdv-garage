@@ -169,6 +169,20 @@ describe("map bridge", () => {
     off();
     expect(await bridge.pois()).toEqual([]);
   });
+  it("delivers map presses to subscribers and forwards a request to open the map to the attached map", () => {
+    const bridge = createMapBridge();
+    const presses = vi.fn();
+    const off = bridge.onPress(presses);
+    bridge.press();
+    off();
+    bridge.press();
+    expect(presses).toHaveBeenCalledTimes(1);
+    bridge.requestAtLeastHalf();
+    const openAtLeastHalf = vi.fn();
+    bridge.attach({ queryPois: async () => [], flyTo: vi.fn(), openAtLeastHalf });
+    bridge.requestAtLeastHalf();
+    expect(openAtLeastHalf).toHaveBeenCalledTimes(1);
+  });
   it("delivers long presses and view changes to subscribers", () => {
     const bridge = createMapBridge();
     const seen: unknown[] = [];

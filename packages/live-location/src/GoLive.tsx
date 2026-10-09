@@ -9,7 +9,6 @@ import { openSettings } from "./permissions";
 let controller: LiveController | null = null;
 export const setController = (c: LiveController) => void (controller = c);
 
-// compact: the map is at its smallest stop, so the control moves to the right edge to stay clear of the live-count pill.
 export function GoLiveControl({ compact }: { compact?: boolean }) {
   const shell = useShell();
   const crewState = useCrewState();

@@ -9,6 +9,8 @@ import { NearbyPanel } from "./NearbyPanel";
 import { SearchField, SearchResults, useSearch } from "./SearchResults";
 import { queryReady } from "./validation";
 
+const MIN_PANEL = 120;
+
 export function PlacesOverlay() {
   const shell = useShell();
   const controller = useController();
@@ -17,10 +19,14 @@ export function PlacesOverlay() {
   const [panel, setPanel] = useState<"search" | "nearby" | null>(null);
   const [now, setNow] = useState(Date.now());
   const tops = useMapTops();
-  const [area, setArea] = useState(0);
+  const [area, setArea] = useState<number | null>(null);
 
   useEffect(() => controller.start(), [controller]);
   useEffect(() => shell.mapBridge.onLongPress((point) => controller.startDrop(point)), [shell, controller]);
+  useEffect(() => shell.mapBridge.onPress(() => setPanel(null)), [shell]);
+  useEffect(() => {
+    if (panel) shell.mapBridge.requestAtLeastHalf();
+  }, [shell, panel]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
@@ -48,6 +54,7 @@ export function PlacesOverlay() {
     controller.openPlace(place);
   };
 
+  const room = area === null ? Infinity : area - tops.below - MAP_GAP;
   const pin = selection?.kind === "pin" ? pins.find((p) => p.id === selection.pinId) : null;
 
   return (
@@ -60,12 +67,12 @@ export function PlacesOverlay() {
           <Feather name="compass" size={19} color={panel === "nearby" ? colors.accentBright : colors.text} />
         </GlassButton>
       </View>
-      {panel ? (
-        <Glass kind="sheet" style={[styles.panel, { top: tops.below, maxHeight: Math.max(120, Math.min(360, area - tops.below - MAP_GAP)) }]}>
+      {panel && room >= MIN_PANEL ? (
+        <Glass kind="sheet" style={[styles.panel, { top: tops.below, maxHeight: Math.min(360, room) }]}>
           {panel === "search" ? <SearchResults search={search} onChoose={choose} /> : <NearbyPanel onChoose={choose} onClose={() => setPanel(null)} />}
         </Glass>
       ) : null}
-      {!panel && selection ? (
+      {!(panel && room >= MIN_PANEL) && selection ? (
         <View style={styles.card} pointerEvents="box-none">
           {selection.kind === "place" ? <PlaceCard place={selection.place} /> : pin ? <PinCard pin={pin} now={now} /> : null}
         </View>

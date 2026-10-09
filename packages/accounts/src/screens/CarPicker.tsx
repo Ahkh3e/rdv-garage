@@ -6,19 +6,25 @@ import { CAR_COLORS, CAR_COLOR_KEYS, CAR_ICONS, CAR_ICON_KEYS, CarIcon, Screen, 
 export function CarPicker() {
   const shell = useShell();
   const session = useSession();
+  const updateMe = (patch: { carIcon?: string; carColor?: string | null }) => {
+    const now = shell.session.get();
+    if (now.status !== "signedIn") return;
+    shell.session.set({ ...now, profile: { ...now.profile, ...patch } });
+    shell.crewContext.store.set((prev) => ({
+      ...prev,
+      crews: prev.crews.map((crew) => ({ ...crew, members: crew.members.map((m) => (m.userId === now.userId ? { ...m, ...patch } : m)) })),
+    }));
+  };
   const choose = useAction(async (key: string) => {
     Haptics.selectionAsync().catch(() => undefined);
     await shell.backend.rpc("accounts", "update_profile", { p_car_icon: key });
-    // Read the session after the request: it may have changed while the request was in flight.
-    const now = shell.session.get();
-    if (now.status === "signedIn") shell.session.set({ ...now, profile: { ...now.profile, carIcon: key } });
+    updateMe({ carIcon: key });
   });
 
   const chooseColor = useAction(async (key: string | null) => {
     Haptics.selectionAsync().catch(() => undefined);
     await shell.backend.rpc("accounts", "update_profile", key ? { p_car_color: key } : { p_clear_car_color: true });
-    const now = shell.session.get();
-    if (now.status === "signedIn") shell.session.set({ ...now, profile: { ...now.profile, carColor: key } });
+    updateMe({ carColor: key });
   });
 
   if (session.status !== "signedIn") return null;

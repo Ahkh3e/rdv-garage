@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useState, type ReactNode } from "react";
 import { Keyboard, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { useContext } from "react";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
+import { HeaderHeightContext } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme";
 
@@ -14,16 +14,16 @@ interface Props {
   onRefresh?: () => void;
   style?: StyleProp<ViewStyle>;
   footer?: ReactNode;
-  // Keep content clear of the home indicator while the keyboard is down, for screens that end in a composer.
   bottomInset?: boolean;
 }
 
 export function Screen({ children, scroll = true, padded = true, topInset = true, refreshing, onRefresh, style, footer, bottomInset = false }: Props) {
   const insets = useSafeAreaInsets();
-  const root = useRef<View>(null);
-  const [offset, setOffset] = useState(0);
+  const header = useContext(HeaderHeightContext) ?? 0;
+  const tabBar = useContext(BottomTabBarHeightContext) ?? 0;
   const [keyboard, setKeyboard] = useState(false);
   useEffect(() => {
+    if (!bottomInset) return;
     const ios = Platform.OS === "ios";
     const show = Keyboard.addListener(ios ? "keyboardWillShow" : "keyboardDidShow", () => setKeyboard(true));
     const hide = Keyboard.addListener(ios ? "keyboardWillHide" : "keyboardDidHide", () => setKeyboard(false));
@@ -31,8 +31,7 @@ export function Screen({ children, scroll = true, padded = true, topInset = true
       show.remove();
       hide.remove();
     };
-  }, []);
-  const tabBar = useContext(BottomTabBarHeightContext) ?? 0;
+  }, [bottomInset]);
   const body = scroll ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -45,21 +44,16 @@ export function Screen({ children, scroll = true, padded = true, topInset = true
     <View style={[{ flex: 1 }, padded && styles.padded, style]}>{children}</View>
   );
   return (
-    <View
-      ref={root}
-      style={{ flex: 1 }}
-      // The keyboard's height is measured against the window, so a screen below a navigation header needs that header's height as an offset.
-      onLayout={() => root.current?.measureInWindow((_x, y) => setOffset((prev) => (Math.abs(prev - y) > 0.5 ? y : prev)))}
+    <KeyboardAvoidingView
+      style={[styles.root, { paddingTop: topInset ? insets.top : 0 }]}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={header}
     >
-      <KeyboardAvoidingView
-        keyboardVerticalOffset={offset}
-        style={[styles.root, { paddingTop: topInset ? insets.top : 0, paddingBottom: bottomInset && !keyboard ? insets.bottom : 0 }]}
-        behavior="padding"
-      >
+      <View style={{ flex: 1, paddingBottom: bottomInset && !keyboard ? insets.bottom : 0 }}>
         {body}
         {footer}
-      </KeyboardAvoidingView>
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -136,6 +136,26 @@ describe("place search", () => {
     await waitFor(() => expect(screen.queryByText("Type at least 3 characters.")).toBeNull());
   });
 
+  it("closes the search panel when the map is tapped", async () => {
+    mockFiles.clear();
+    const { shell } = await mount();
+    await fireEvent(inputs().at(-1)!, "focus");
+    await type("t");
+    expect(await screen.findByText("Type at least 3 characters.")).toBeTruthy();
+    await act(async () => shell.mapBridge.press());
+    await waitFor(() => expect(screen.queryByText("Type at least 3 characters.")).toBeNull());
+  });
+
+  it("asks the map to open to at least halfway when a panel opens", async () => {
+    mockFiles.clear();
+    const { shell } = await mount();
+    const open = jest.fn();
+    shell.mapBridge.attach({ queryPois: async () => [], flyTo: () => undefined, openAtLeastHalf: open });
+    await fireEvent(inputs().at(-1)!, "focus");
+    await type("t");
+    expect(open).toHaveBeenCalled();
+  });
+
   it("keeps the search panel when the field is focused again before the idle check runs", async () => {
     mockFiles.clear();
     await mount();
